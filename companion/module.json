@@ -1,0 +1,9 @@
+{
+  "api": 1,
+  "name": "Companion",
+  "version": "0.1.0",
+  "author": "FranjeGueje",
+  "description": "Builds a game's Steam launch options and copies them, adds files to Steam as non-Steam games and shows everything Steam knows about the current game.",
+  "tab": "Compa",
+  "no_qam": true
+}
