@@ -57,6 +57,7 @@ class FakeCtx:
 
     class game:
         selected = None
+        running = None
 
         @staticmethod
         def info(appid):
@@ -174,6 +175,20 @@ class BackendTest(unittest.TestCase):
                     backend.helixsr_download()
             proc.kill.assert_called()
             self.assertEqual(FakeCtx.tasks[-1].end[0], "fail")
+
+    def test_helixsr_download_refused_while_a_game_runs(self):
+        with tempfile.TemporaryDirectory() as d:
+            backend = self.helixsr_backend(d)
+            backend.HELIXSR_SCRIPT.write_text("#!/bin/bash\n")
+            with mock.patch.object(FakeCtx.game, "running", {"appid": "1", "name": "G", "shortcut": False}):
+                with mock.patch.object(backend.subprocess, "Popen") as popen:
+                    with self.assertRaises(FakeCtx.Unavailable):
+                        backend.helixsr_download()
+                popen.assert_not_called()
+            self.assertEqual(FakeCtx.tasks, [])
+            # nothing stuck: with the game closed it runs
+            with mock.patch.object(backend.subprocess, "Popen", return_value=self.fake_proc([])):
+                backend.helixsr_download()
 
     def test_helixsr_download_is_exclusive(self):
         with tempfile.TemporaryDirectory() as d:

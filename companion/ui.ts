@@ -44,6 +44,8 @@ const T = {
     helixsrDownloading: "Descargando HelixSR…",
     helixsrDone: "HelixSR descargado",
     helixsrFailed: "No se pudo descargar HelixSR",
+    helixsrHeavy: "Tarea pesada: puedes seguirla en Tareas (Select en el panel de Invasor)",
+    helixsrGameRunning: "Hay un juego en ejecución: ciérralo para descargar HelixSR, es una tarea pesada",
     mangohud: "MangoHud",
     mangohudHint: "Con cualquier opción de MangoHud se añade el comando mangohud antes de %command%.",
     fpsLimit: "Limitar FPS",
@@ -174,6 +176,8 @@ const T = {
     helixsrDownloading: "Downloading HelixSR…",
     helixsrDone: "HelixSR downloaded",
     helixsrFailed: "Could not download HelixSR",
+    helixsrHeavy: "Heavy task: you can follow it in Tasks (Select in the Invasor panel)",
+    helixsrGameRunning: "A game is running: close it to download HelixSR, it is a heavy task",
     mangohud: "MangoHud",
     mangohudHint: "With any MangoHud option, the mangohud command is added before %command%.",
     fpsLimit: "Limit FPS",
@@ -493,9 +497,12 @@ async function launcher(el: HTMLElement, ctx: ModuleCtx, t: Strings) {
     label: t.helixsrDownload,
     onClick: async () => {
       if (helixsrBusy) return;
+      // Heavy: not while a game is running (the backend refuses too).
+      if (ctx.game().running) return ctx.toast(t.helixsrGameRunning, "error");
       helixsrBusy = true;
       helixsrDownload.style.display = "none";
-      helixsrStatus.textContent = t.helixsrDownloading;
+      helixsrStatus.textContent = `${t.helixsrDownloading} ${t.helixsrHeavy}`;
+      ctx.toast(t.helixsrHeavy, "ok");
       try {
         await ctx.call("helixsr_download");
         ctx.toast(t.helixsrDone, "ok");

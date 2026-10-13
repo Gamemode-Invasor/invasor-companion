@@ -185,6 +185,9 @@ def helixsr_download(appid=None):
     """Runs the download script as a task in the Tasks panel, then says what is there (see helixsr_status)."""
     if not HELIXSR_SCRIPT.is_file():
         raise ctx.Unavailable(f"download script not found: {HELIXSR_SCRIPT}")
+    # Heavy (download and build): not while a game is running. The UI says so before it gets here.
+    if ctx.game.running:
+        raise ctx.Unavailable("a game is running: close it to download HelixSR")
     # One download at a time: two scripts would write the same folder.
     if not _helixsr_busy.acquire(blocking=False):
         raise ctx.Unavailable("a HelixSR download is already running")
