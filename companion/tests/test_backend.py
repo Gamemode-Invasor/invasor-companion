@@ -45,7 +45,7 @@ class BackendTest(unittest.TestCase):
         backend.setup(FakeCtx())
         self.assertEqual(set(backend.METHODS), {
             "build", "language", "browse", "add_to_steam", "is_added", "game_info", "helixsr_status",
-            "helixsr_download"})
+            "helixsr_download", "helixsr_copy"})
 
     def test_helixsr_status(self):
         backend = load_backend()
@@ -57,7 +57,33 @@ class BackendTest(unittest.TestCase):
             (backend.HELIXSR_DIR / backend.HELIXSR_DLLS[0]).write_text("x")
             self.assertFalse(backend.helixsr_status()["found"])
             (backend.HELIXSR_DIR / backend.HELIXSR_DLLS[1]).write_text("x")
-            self.assertEqual(backend.helixsr_status(), {"found": True, "dir": str(backend.HELIXSR_DIR)})
+            self.assertEqual(backend.helixsr_status(), {"found": True, "dir": str(backend.HELIXSR_DIR), "game": None})
+
+    def test_helixsr_copy(self):
+        backend = load_backend()
+        backend.setup(FakeCtx())
+        with tempfile.TemporaryDirectory() as d:
+            lib = Path(d) / "lib"
+            backend.HELIXSR_DIR = Path(d) / "HelixSR"
+            backend.HELIXSR_DIR.mkdir()
+            for name in backend.HELIXSR_DLLS:
+                (backend.HELIXSR_DIR / name).write_text("new")
+            dest = lib / "compatdata" / "42" / "pfx" / "drive_c" / "HelixSR"
+            with mock.patch.object(backend.steam, "libraries", return_value=[lib]):
+                self.assertIsNone(backend.helixsr_status()["game"])
+                self.assertEqual(backend.helixsr_status("42")["game"], {"prefix": False, "copy": False})
+                with self.assertRaises(FakeCtx.Unavailable):
+                    backend.helixsr_copy("42")
+                with self.assertRaises(FakeCtx.InvalidArgument):
+                    backend.helixsr_status("../x")
+                dest.parent.mkdir(parents=True)
+                self.assertEqual(backend.helixsr_status("42")["game"], {"prefix": True, "copy": True})
+                self.assertEqual(backend.helixsr_copy("42")["game"], {"prefix": True, "copy": False})
+                self.assertEqual((dest / backend.HELIXSR_DLLS[0]).read_text(), "new")
+                (dest / backend.HELIXSR_DLLS[1]).write_text("old")
+                self.assertTrue(backend.helixsr_status("42")["game"]["copy"])
+                backend.helixsr_copy("42")
+                self.assertEqual((dest / backend.HELIXSR_DLLS[1]).read_text(), "new")
 
     def test_helixsr_download(self):
         backend = load_backend()

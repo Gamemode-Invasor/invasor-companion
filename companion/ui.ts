@@ -37,7 +37,10 @@ const T = {
     helixsrHint: "Añade PROTON_USE_OPTISCALER y su configuración. Incompatible con FSR4.",
     helixsrFound: "DLL encontradas (en %dir%)",
     helixsrMissing: "DLL no encontradas",
-    helixsrDownload: "Descargar HelixSR",
+    helixsrDownload: "Descargar y generar DLL",
+    helixsrCopy: "Copiar DLL al juego",
+    helixsrCopied: "DLL copiadas al juego",
+    helixsrCopyFailed: "No se pudieron copiar las DLL",
     helixsrDownloading: "Descargando HelixSR…",
     helixsrDone: "HelixSR descargado",
     helixsrFailed: "No se pudo descargar HelixSR",
@@ -163,7 +166,10 @@ const T = {
     helixsrHint: "Adds PROTON_USE_OPTISCALER and its config. Not compatible with FSR4.",
     helixsrFound: "DLLs found (in %dir%)",
     helixsrMissing: "DLLs not found",
-    helixsrDownload: "Download HelixSR",
+    helixsrDownload: "Download and generate DLLs",
+    helixsrCopy: "Copy DLLs to the game",
+    helixsrCopied: "DLLs copied to the game",
+    helixsrCopyFailed: "Could not copy the DLLs",
     helixsrDownloading: "Downloading HelixSR…",
     helixsrDone: "HelixSR downloaded",
     helixsrFailed: "Could not download HelixSR",
@@ -461,13 +467,20 @@ async function launcher(el: HTMLElement, ctx: ModuleCtx, t: Strings) {
   const fsr4Indicator = toggle(t.fsr4Indicator, () => s().fsr4Indicator, (v) => (s().fsr4Indicator = v));
   const helixsrStatus = ui.info("");
   let helixsrFound = false;
+  let helixsrCopyNeeded = false;
   async function paintHelixsr() {
+    const appid = currentGame(ctx.game())?.game.appid ?? "";
     try {
-      const st = await ctx.call<{ found: boolean; dir: string }>("helixsr_status");
+      const st = await ctx.call<{ found: boolean; dir: string; game: { copy: boolean } | null }>(
+        "helixsr_status",
+        appid ? { appid } : {},
+      );
       helixsrFound = st.found;
+      helixsrCopyNeeded = !!st.game?.copy;
       helixsrStatus.textContent = st.found ? t.helixsrFound.replace("%dir%", st.dir) : t.helixsrMissing;
     } catch {
       helixsrFound = false;
+      helixsrCopyNeeded = false;
       helixsrStatus.textContent = t.helixsrMissing;
     }
     sync();
@@ -485,6 +498,20 @@ async function launcher(el: HTMLElement, ctx: ModuleCtx, t: Strings) {
       await paintHelixsr();
     },
   });
+  const helixsrCopy = ui.button({
+    label: t.helixsrCopy,
+    onClick: async () => {
+      const appid = currentGame(ctx.game())?.game.appid ?? "";
+      try {
+        await ctx.call("helixsr_copy", { appid });
+        ctx.toast(t.helixsrCopied, "ok");
+      } catch {
+        ctx.toast(t.helixsrCopyFailed, "error");
+      }
+      await paintHelixsr();
+    },
+  });
+  refreshHelixsr = paintHelixsr;
   const fpsValue = track(
     ui.number({
       label: t.fps, value: 30, min: 0, max: 240, step: 1,
@@ -501,6 +528,7 @@ async function launcher(el: HTMLElement, ctx: ModuleCtx, t: Strings) {
     dep(fsr4Indicator, s().fsr4.on);
     dep(helixsrStatus, s().helixsr.on);
     dep(helixsrDownload, s().helixsr.on && !helixsrFound);
+    dep(helixsrCopy, s().helixsr.on && helixsrFound && helixsrCopyNeeded);
     dep(fpsValue, s().fpsLimit.on);
     dep(chooseFolder, s().prefix.on);
     dep(dllValue, s().dllOverrides.on);
@@ -542,6 +570,7 @@ async function launcher(el: HTMLElement, ctx: ModuleCtx, t: Strings) {
       helixsrToggle,
       helixsrStatus,
       helixsrDownload,
+      helixsrCopy,
     ], { open: false }),
     ui.section(t.mangohud, [
       toggle(t.fpsLimit, () => s().fpsLimit.on, (v) => (s().fpsLimit.on = v), t.mangohudHint),
@@ -724,10 +753,11 @@ function credits(el: HTMLElement, t: Strings) {
 }
 
 let refreshGame: (() => Promise<void>) | null = null;
+let refreshHelixsr: (() => Promise<void>) | null = null;
 
 export default defineModule({
   tabsAlign: "justify",
-  onGameChange: () => void refreshGame?.(),
+  onGameChange: () => (void refreshGame?.(), void refreshHelixsr?.()),
   tabs: [
     {
       label: "Lanzador",
