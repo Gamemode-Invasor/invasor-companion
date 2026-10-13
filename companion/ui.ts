@@ -44,6 +44,15 @@ const T = {
     helixsrDownloading: "Descargando HelixSR…",
     helixsrDone: "HelixSR descargado",
     helixsrFailed: "No se pudo descargar HelixSR",
+    cleaning: "Limpieza",
+    cleanScan: "Buscar archivos sobrantes",
+    cleanPrefixes: "Prefijos y shaders de juegos que ya no están",
+    cleanGrids: "Imágenes no usadas",
+    cleanNothing: "No hay nada que limpiar",
+    cleanDelete: "Eliminar seleccionados",
+    cleanAsk: "¿Eliminar %n% elementos? No se puede deshacer.",
+    cleanDone: "Eliminados: %n%",
+    cleanFailed: "No se pudieron eliminar: %n%",
     helixsrHeavy: "Tarea pesada: puedes seguirla en Tareas (Select en el panel de Invasor)",
     helixsrGameRunning: "Hay un juego en ejecución: ciérralo para descargar HelixSR, es una tarea pesada",
     mangohud: "MangoHud",
@@ -176,6 +185,15 @@ const T = {
     helixsrDownloading: "Downloading HelixSR…",
     helixsrDone: "HelixSR downloaded",
     helixsrFailed: "Could not download HelixSR",
+    cleaning: "Cleaning",
+    cleanScan: "Look for leftover files",
+    cleanPrefixes: "Prefixes and shaders of games that are gone",
+    cleanGrids: "Unused images",
+    cleanNothing: "Nothing to clean",
+    cleanDelete: "Delete selected",
+    cleanAsk: "Delete %n% items? This can't be undone.",
+    cleanDone: "Deleted: %n%",
+    cleanFailed: "Could not delete: %n%",
     helixsrHeavy: "Heavy task: you can follow it in Tasks (Select in the Invasor panel)",
     helixsrGameRunning: "A game is running: close it to download HelixSR, it is a heavy task",
     mangohud: "MangoHud",
@@ -692,6 +710,75 @@ function addTo(el: HTMLElement, ctx: ModuleCtx, t: Strings) {
   el.append(choose, path, add);
 }
 
+interface CleanItem { path: string; appid: string; size: number; kind?: string }
+interface CleanScan { prefixes: CleanItem[]; grids: CleanItem[] }
+
+const formatSize = (n: number) => (n >= 1e9 ? `${(n / 1e9).toFixed(2)} GB` : `${(n / 1e6).toFixed(1)} MB`);
+
+// Cleaning: orphan compatdata/shadercache and unused grid images, picked one by one (all marked) and deleted.
+function cleaning(el: HTMLElement, ctx: ModuleCtx, t: Strings) {
+  const list = document.createElement("div");
+  const picked = new Set<string>();
+  let busy = false;
+
+  const group = (title: string, items: CleanItem[], label: (i: CleanItem) => string) =>
+    items.length
+      ? [
+          ui.info(title),
+          ...items.map((i) => {
+            picked.add(i.path);
+            return ui.toggle({
+              label: `${label(i)} (${formatSize(i.size)})`,
+              value: true,
+              onChange: (v) => void (v ? picked.add(i.path) : picked.delete(i.path)),
+            });
+          }),
+        ]
+      : [];
+
+  async function scan() {
+    if (busy) return;
+    busy = true;
+    try {
+      const found = await ctx.call<CleanScan>("clean_scan");
+      picked.clear();
+      const rows = [
+        ...group(t.cleanPrefixes, found.prefixes, (i) => `${i.appid} · ${i.kind}`),
+        ...group(t.cleanGrids, found.grids, (i) => i.path.split("/").pop() ?? i.path),
+      ];
+      if (!rows.length) return list.replaceChildren(ui.info(t.cleanNothing));
+      list.replaceChildren(
+        ...rows,
+        ui.button({
+          label: t.cleanDelete,
+          onClick: async () => {
+            if (busy || !picked.size) return;
+            const n = String(picked.size);
+            if (!(await ui.confirm(t.cleanAsk.replace("%n%", n), { ok: t.cleanDelete, cancel: t.cancel }))) return;
+            busy = true;
+            try {
+              const out = await ctx.call<{ deleted: string[]; failed: string[] }>("clean_delete", { paths: [...picked] });
+              ctx.toast(t.cleanDone.replace("%n%", String(out.deleted.length)), "ok");
+              if (out.failed.length) ctx.toast(t.cleanFailed.replace("%n%", String(out.failed.length)), "error");
+            } catch {
+              ctx.toast(t.cleanFailed.replace("%n%", n), "error");
+            } finally {
+              busy = false;
+            }
+            await scan();
+          },
+        }),
+      );
+    } catch {
+      list.replaceChildren(ui.info(t.cleanNothing));
+    } finally {
+      busy = false;
+    }
+  }
+
+  el.append(ui.button({ label: t.cleanScan, onClick: () => void scan() }), list);
+}
+
 interface GameRow { key: string; value: string | number; type: string }
 interface GameInfo { appid: string; name: string | null; kind: string; groups: { id: string; rows: GameRow[] }[] }
 
@@ -810,7 +897,11 @@ export default defineModule({
       label: "Steam",
       async render(el, ctx) {
         const lang = await ctx.call<Lang>("language");
-        addTo(el, ctx, T[lang] ?? T.en);
+        const t = T[lang] ?? T.en;
+        addTo(el, ctx, t);
+        const clean = document.createElement("div");
+        cleaning(clean, ctx, t);
+        el.append(ui.separator(), ui.section(t.cleaning, [clean], { open: false }));
       },
     },
     {

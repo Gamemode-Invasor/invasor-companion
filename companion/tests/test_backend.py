@@ -70,7 +70,7 @@ class BackendTest(unittest.TestCase):
         backend.setup(FakeCtx())
         self.assertEqual(set(backend.METHODS), {
             "build", "language", "browse", "add_to_steam", "is_added", "game_info", "helixsr_status",
-            "helixsr_download", "helixsr_copy"})
+            "helixsr_download", "helixsr_copy", "clean_scan", "clean_delete"})
 
     def test_helixsr_status(self):
         backend = load_backend()
@@ -278,6 +278,13 @@ class BackendTest(unittest.TestCase):
         backend.setup(FakeCtx())
         out = backend.browse("/nonexistent-companion-dir", files=True, home=True)
         self.assertEqual(out["path"], str(Path.home().resolve()))
+
+    def test_clean_delete_rejects_bad_arguments(self):
+        backend = load_backend()
+        backend.setup(FakeCtx())
+        for bad in ("/tmp/x", None, [1], {"a": "b"}):
+            with self.assertRaises(FakeCtx.InvalidArgument):
+                backend.clean_delete(bad)
 
     def test_game_info_defaults_to_the_selected_game(self):
         backend = load_backend()

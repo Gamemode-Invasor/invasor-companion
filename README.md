@@ -17,6 +17,7 @@ Launch options. It adds a **Compa** tab (not shown in the Quick Access) with fou
 - **Steam**: choose any file (a browser that starts at your home folder, any extension) and press *Add to Steam*. It asks
   Steam to add it as a non-Steam game the way Steam supports: it creates `/tmp/addnonsteamgamefile` and opens
   `steam://addnonsteamgame/<encoded path>` with `xdg-open`. `xdg-open` runs with the graphical session's environment (the service has none) and its result is checked. Steam shows its own dialog to confirm; the module then waits for the shortcut to show up in `shortcuts.vdf`.
+  Below it, a folded **Cleaning** section lists the `compatdata`/`shadercache` folders of games that are no longer installed (in every library) and the grid images in `userdata/*/config/grid` that belong to no game or shortcut. Everything is marked; you choose and confirm, and only items from a fresh scan are ever deleted.
 - **Créditos** (Credits): the author.
 
 The texts follow Steam's language (Spanish or English). The logic is a port of the Companion launcher in
