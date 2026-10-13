@@ -6,7 +6,7 @@ import subprocess
 import threading
 from pathlib import Path
 
-from . import command, gameinfo, steam
+from . import cleaner, command, gameinfo, steam
 
 ctx = None
 
@@ -258,6 +258,21 @@ def game_info(appid=None):
     return gameinfo.game_info(appid, name=known.get("name"), shortcut=known.get("shortcut"))
 
 
+def clean_scan():
+    """What can be cleaned: orphan compatdata/shadercache folders and unused grid images (see cleaner.scan)."""
+    return cleaner.scan()
+
+
+def clean_delete(paths):
+    """Deletes the chosen items of clean_scan (a fresh scan decides which paths are allowed)."""
+    if not isinstance(paths, list) or not all(isinstance(p, str) for p in paths):
+        raise ctx.InvalidArgument("paths must be a list of strings")
+    out = cleaner.delete(paths)
+    ctx.log.info("cleaning: deleted %d, failed %d", len(out["deleted"]), len(out["failed"]))
+    return out
+
+
 METHODS = {"build": build, "language": language, "browse": browse, "add_to_steam": add_to_steam,
            "is_added": is_added, "game_info": game_info, "helixsr_status": helixsr_status,
-           "helixsr_download": helixsr_download, "helixsr_copy": helixsr_copy}
+           "helixsr_download": helixsr_download, "helixsr_copy": helixsr_copy,
+           "clean_scan": clean_scan, "clean_delete": clean_delete}
