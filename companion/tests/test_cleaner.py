@@ -50,6 +50,11 @@ class CleanerTest(unittest.TestCase):
         self.assertEqual({p["appid"]: p["name"] for p in out["prefixes"] if p["kind"] == "compatdata"},
                          {"99": "Old Game", "5": "Fallback"})
 
+    def test_grid_with_the_64_bit_shortcut_id_is_kept(self):
+        long_id = (4294967294 << 32) | 0x02000000
+        (self.grid / f"{long_id}.png").write_text("x")
+        self.assertNotIn(str(long_id), [g["appid"] for g in self.scan()["grids"]])
+
     def test_grids_in_use_are_kept(self):
         for name in ("10_icon.png", "99p.jpg", "555_hero.png", "4294967294.png", "notes.txt"):
             (self.grid / name).write_text("x")

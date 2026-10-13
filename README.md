@@ -10,6 +10,8 @@ Launch options. It adds a **Compa** tab (not shown in the Quick Access) with fou
   FG/upscalers (MAKO, lsfg-vk, FSR 4, HelixSR), MangoHud (FPS limit, API and FPS), graphics (wined3d, Zink, HDR, Direct3D),
   Proton (32-bit compatibility, large address aware, esync/fsync, prefix chosen in a folder browser that starts at `compatdata` and can go anywhere), environment (DLL overrides, "not a Steam Deck" = `SteamDeck=0`, custom variables)
   and *Reset all*. Incompatible or empty combinations show a warning. The choices are not saved: they reset when the tab reloads.
+  MAKO and lsfg-vk exclude each other, and so do FSR 4 and HelixSR: turning one on turns the other off.
+  HelixSR needs its DLLs: *Download and generate DLLs* fetches the release and builds them with the official setup (it asks to confirm the DLSS licence in the UI), and *Copy DLLs to the game* puts them in the game's prefix. It is a heavy task, so it shows as a task in Invasor's **Tasks** panel (Select in the Invasor panel) with its progress, runs one at a time and is refused while a game is running.
 - **Game**: everything Steam's files say about the current game (the open page, else the highlighted one, else the
   running one), grouped in sections: general, installation (library, folder, size, state, build, updates), play (last
   played, play time, launch options), compatibility (tool, prefix) and, for non-Steam shortcuts, its executable, start
@@ -17,11 +19,14 @@ Launch options. It adds a **Compa** tab (not shown in the Quick Access) with fou
 - **Steam**: choose any file (a browser that starts at your home folder, any extension) and press *Add to Steam*. It asks
   Steam to add it as a non-Steam game the way Steam supports: it creates `/tmp/addnonsteamgamefile` and opens
   `steam://addnonsteamgame/<encoded path>` with `xdg-open`. `xdg-open` runs with the graphical session's environment (the service has none) and its result is checked. Steam shows its own dialog to confirm; the module then waits for the shortcut to show up in `shortcuts.vdf`.
-  Below it, a folded **Cleaning** section lists the `compatdata`/`shadercache` folders of games that are no longer installed (in every library) and the grid images in `userdata/*/config/grid` that belong to no game or shortcut. Everything is marked; you choose and confirm, and only items from a fresh scan are ever deleted.
+  Below it, a folded **Cleaning** section lists the `compatdata`/`shadercache` folders of games that are no longer installed (in every library) and the grid images in `userdata/*/config/grid` that belong to no game or shortcut. Everything is marked; you choose and confirm, and only items from a fresh scan are ever deleted. Game names are remembered in `~/.local/share/invasor/companion/names.json` (refreshed on every Steam start) so a leftover folder can say what it was.
 - **Créditos** (Credits): the author.
 
 The texts follow Steam's language (Spanish or English). The logic is a port of the Companion launcher in
 `../companion`; it only builds the text, it never writes to any game.
+
+## Requirements
+Invasor 0.2.0 or newer (`min_core`): it uses `ctx.task` and `ctx.events`.
 
 ## Build, test and install
 With the core checked out next to this repository (`../invasor`):

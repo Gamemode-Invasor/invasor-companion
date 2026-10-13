@@ -266,6 +266,9 @@ def game_info(appid=None):
 NAMES_FILE = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")) / "invasor/companion/names.json"
 
 
+_names_lock = threading.Lock()  # the Steam-start thread and a scan both read, add and save the file
+
+
 def _load_names():
     try:
         data = json.loads(NAMES_FILE.read_text())
@@ -279,8 +282,9 @@ def _save_names(names):
     try:
         NAMES_FILE.parent.mkdir(parents=True, exist_ok=True)
         tmp = NAMES_FILE.with_suffix(".tmp")
-        tmp.write_text(json.dumps(names, ensure_ascii=False, sort_keys=True))
-        os.replace(tmp, NAMES_FILE)
+        with _names_lock:
+            tmp.write_text(json.dumps(names, ensure_ascii=False, sort_keys=True))
+            os.replace(tmp, NAMES_FILE)
     except OSError as e:
         ctx.log.warning("could not save %s: %s", NAMES_FILE, e)
 
