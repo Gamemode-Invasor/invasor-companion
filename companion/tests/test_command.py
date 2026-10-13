@@ -39,9 +39,17 @@ class BuildTest(unittest.TestCase):
         self.assertEqual(out, 'MAKO_PROFILE="default" /home/u/.local/bin/mako-launch %command%')
 
     def test_empty_profile_warns(self):
-        out = build(mako={"on": True, "profile": "  "}, lsfg={"on": True, "profile": ""})
+        out = build(mako={"on": True, "profile": "  "})
         self.assertEqual(out["command"], "")
-        self.assertEqual([w["code"] for w in out["warnings"]], ["empty_mako", "empty_lsfg"])
+        self.assertEqual([w["code"] for w in out["warnings"]], ["empty_mako"])
+        out = build(lsfg={"on": True, "profile": ""})
+        self.assertEqual([w["code"] for w in out["warnings"]], ["empty_lsfg"])
+
+    def test_mako_excludes_lsfg(self):
+        out = build(mako={"on": True, "profile": "m"}, lsfg={"on": True, "profile": "l"})
+        self.assertNotIn("LSFGVK", out["command"])
+        self.assertIn("MAKO_PROFILE", out["command"])
+        self.assertEqual([w["code"] for w in out["warnings"]], ["mako_lsfg"])
 
     def test_lsfg_and_fsr4(self):
         out = build(lsfg={"on": True, "profile": "decky-lsfg-vk"}, fsr4={"on": True}, fsr4Indicator=True)

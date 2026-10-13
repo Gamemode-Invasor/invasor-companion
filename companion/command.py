@@ -89,7 +89,7 @@ def build(state, home="~"):
     """{"command", "warnings"}: command is "" when nothing is selected.
 
     Warnings are {"code", "name"?} for the UI to word: lsfg_wined3d, lsfg_mangohud, empty_mako,
-    empty_lsfg, empty_prefix, empty_dll, helixsr_fsr4, custom_invalid / custom_reserved / custom_duplicate (name).
+    empty_lsfg, empty_prefix, empty_dll, mako_lsfg, helixsr_fsr4, custom_invalid / custom_reserved / custom_duplicate (name).
     """
     variables, warnings = [], []
     mako, lsfg, fsr4 = _section(state, "mako"), _section(state, "lsfg"), _section(state, "fsr4")
@@ -103,10 +103,14 @@ def build(state, home="~"):
     elif mako.get("on"):
         warnings.append({"code": "empty_mako"})
 
+    # MAKO and lsfg-vk exclude each other (the UI turns one off when the other is picked).
+    use_lsfg = bool(lsfg.get("on")) and not mako.get("on")
+    if lsfg.get("on") and mako.get("on"):
+        warnings.append({"code": "mako_lsfg"})
     lsfg_profile = _text(lsfg.get("profile"))
-    if lsfg.get("on") and lsfg_profile:
+    if use_lsfg and lsfg_profile:
         variables.append("LSFGVK_PROFILE=" + quote(lsfg_profile) + " ENABLE_GAMESCOPE_WSI=0")
-    elif lsfg.get("on"):
+    elif use_lsfg:
         warnings.append({"code": "empty_lsfg"})
 
     # HelixSR and FSR 4 exclude each other (the UI turns one off when the other is picked).
@@ -161,9 +165,9 @@ def build(state, home="~"):
             seen.add(name)
             variables.append(name + "=" + quote_if_needed(item.get("value", "")))
 
-    if lsfg.get("on") and state.get("wined3d"):
+    if use_lsfg and state.get("wined3d"):
         warnings.append({"code": "lsfg_wined3d"})
-    if lsfg.get("on") and mangohud:
+    if use_lsfg and mangohud:
         warnings.append({"code": "lsfg_mangohud"})
 
     wrappers = []

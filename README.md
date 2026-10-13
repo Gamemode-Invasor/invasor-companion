@@ -1,5 +1,7 @@
 # Companion
 
+**English** · [Español](README.es.md)
+
 A module for [Invasor](../invasor) that **builds a game's Steam launch options** (`VAR=value … mangohud mako-launch %command%`)
 from the panel, with the gamepad, and copies them to the clipboard. Paste the result into the game's Properties › General ›
 Launch options. It adds a **Compa** tab (not shown in the Quick Access) with four pages:
