@@ -37,6 +37,18 @@ class CleanerTest(unittest.TestCase):
                          [("compatdata", "99"), ("shadercache", "99")])
         self.assertEqual(next(p for p in out["prefixes"] if p["kind"] == "compatdata")["size"], 5)
 
+    def test_names_are_remembered_for_orphans(self):
+        names = self.root / "names.json"
+        (self.lib / "appmanifest_99.acf").write_text('"AppState"\n{\n"appid"\t"99"\n"name"\t"Old Game"\n}\n')
+        self.assertEqual(cleaner.scan(self.root, [self.lib], names)["prefixes"], [])
+        (self.lib / "appmanifest_99.acf").unlink()  # uninstalled
+        out = cleaner.scan(self.root, [self.lib], names, name_of=lambda a: "Fallback" if a == "5" else None)
+        self.assertEqual({p["name"] for p in out["prefixes"]}, {"Old Game"})
+        (self.lib / "compatdata/5").mkdir()
+        out = cleaner.scan(self.root, [self.lib], names, name_of=lambda a: "Fallback" if a == "5" else None)
+        self.assertEqual({p["appid"]: p["name"] for p in out["prefixes"] if p["kind"] == "compatdata"},
+                         {"99": "Old Game", "5": "Fallback"})
+
     def test_grids_in_use_are_kept(self):
         for name in ("10_icon.png", "99p.jpg", "555_hero.png", "4294967294.png", "notes.txt"):
             (self.grid / name).write_text("x")
