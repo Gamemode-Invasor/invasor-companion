@@ -88,9 +88,9 @@ def is_added(path):
 
 HELIXSR_DIR = Path.home() / ".local/share/invasor/user-modules/companion/HelixSR"
 HELIXSR_DLLS = ("amd_fidelityfx_dx12.dll", "amd_fidelityfx_upscaler_dx12.dll")
-# The script that downloads the DLLs into HELIXSR_DIR (it lives next to this module).
-HELIXSR_SCRIPT = Path(__file__).resolve().parent / "helixsr-download.sh"
-HELIXSR_TIMEOUT = 600
+# The script that fetches and builds the DLLs into HELIXSR_DIR (shipped in the module's bin/).
+HELIXSR_SCRIPT = Path(__file__).resolve().parent / "bin" / "helixsr-fetch.sh"
+HELIXSR_TIMEOUT = 1800
 
 
 def helixsr_status():
@@ -104,8 +104,8 @@ def helixsr_download():
     if not HELIXSR_SCRIPT.is_file():
         raise ctx.Unavailable(f"download script not found: {HELIXSR_SCRIPT}")
     try:
-        # No shell; the script gets the destination folder as its only argument.
-        done = subprocess.run(["bash", str(HELIXSR_SCRIPT), str(HELIXSR_DIR)], stdin=subprocess.DEVNULL,
+        # No shell; --yes accepts the DLSS licence prompt (the UI is the user's confirmation).
+        done = subprocess.run(["bash", str(HELIXSR_SCRIPT), "--yes", "--out", str(HELIXSR_DIR)], stdin=subprocess.DEVNULL,
                               capture_output=True, text=True, timeout=HELIXSR_TIMEOUT)
     except subprocess.TimeoutExpired:
         raise ctx.Unavailable("the HelixSR download timed out")

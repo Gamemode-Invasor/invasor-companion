@@ -73,7 +73,7 @@ class BackendTest(unittest.TestCase):
                     backend.helixsr_download()
             with mock.patch.object(backend.subprocess, "run", return_value=mock.Mock(returncode=0, stderr="")) as run:
                 self.assertFalse(backend.helixsr_download()["found"])
-            self.assertEqual(run.call_args.args[0], ["bash", str(backend.HELIXSR_SCRIPT), str(backend.HELIXSR_DIR)])
+            self.assertEqual(run.call_args.args[0], ["bash", str(backend.HELIXSR_SCRIPT), "--yes", "--out", str(backend.HELIXSR_DIR)])
 
     def test_build_uses_home_and_ignores_garbage(self):
         backend = load_backend()
