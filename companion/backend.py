@@ -159,27 +159,82 @@ def helixsr_copy(appid):
     return helixsr_status(appid)
 
 
+# Stages of helixsr-fetch.sh for the Tasks panel: line prefix -> (fraction, text es, text en).
+# None as the fraction = no bar (the build takes an unknown while).
+HELIXSR_STAGES = (
+    ("buscando", 0.05, "Buscando la última versión", "Looking for the latest version"),
+    ("versión:", 0.10, "Versión encontrada", "Version found"),
+    ("descargando", 0.20, "Descargando", "Downloading"),
+    ("compilando", None, "Compilando (puede tardar unos minutos)", "Building (it can take a few minutes)"),
+)
+
+
+def _helixsr_stage(line, es):
+    """(fraction, text) for a "[helixsr-fetch] ..." line of the script, else None."""
+    prefix = "[helixsr-fetch] "
+    if not line.startswith(prefix):
+        return None
+    rest = line[len(prefix):]
+    for key, fraction, text_es, text_en in HELIXSR_STAGES:
+        if rest.startswith(key):
+            return fraction, text_es if es else text_en
+    return None
+
+
 def helixsr_download(appid=None):
-    """Runs the download script, then says what is there (see helixsr_status)."""
+    """Runs the download script as a task in the Tasks panel, then says what is there (see helixsr_status)."""
     if not HELIXSR_SCRIPT.is_file():
         raise ctx.Unavailable(f"download script not found: {HELIXSR_SCRIPT}")
     # One download at a time: two scripts would write the same folder.
     if not _helixsr_busy.acquire(blocking=False):
         raise ctx.Unavailable("a HelixSR download is already running")
     try:
-        # No shell; --yes accepts the DLSS licence prompt (the UI is the user's confirmation).
-        done = subprocess.run(["bash", str(HELIXSR_SCRIPT), "--yes", "--out", str(HELIXSR_DIR)], stdin=subprocess.DEVNULL,
-                              capture_output=True, text=True, timeout=HELIXSR_TIMEOUT)
-    except subprocess.TimeoutExpired:
-        raise ctx.Unavailable("the HelixSR download timed out")
-    except OSError as e:
-        raise ctx.Unavailable(f"could not run the download script: {e}")
+        es = language() == "es"
+        with ctx.task("Descargando HelixSR" if es else "Downloading HelixSR") as task:
+            task.update(0.0, "Iniciando" if es else "Starting")
+            _helixsr_run(task, es)
     finally:
         _helixsr_busy.release()
-    if done.returncode != 0:
-        ctx.log.error("%s exited %s: %s", HELIXSR_SCRIPT, done.returncode, done.stderr.strip())
-        raise ctx.Unavailable(f"download script exited {done.returncode}: {done.stderr.strip()}")
     return helixsr_status(appid)
+
+
+def _helixsr_run(task, es):
+    try:
+        # No shell; --yes accepts the DLSS licence prompt (the UI is the user's confirmation).
+        proc = subprocess.Popen(["bash", str(HELIXSR_SCRIPT), "--yes", "--out", str(HELIXSR_DIR)],
+                                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+    except OSError as e:
+        raise ctx.Unavailable(f"could not run the download script: {e}")
+    timed_out = threading.Event()
+
+    def expire():
+        timed_out.set()
+        proc.kill()
+
+    timer = threading.Timer(HELIXSR_TIMEOUT, expire)
+    timer.start()
+    tail = []
+    try:
+        for line in proc.stdout:
+            line = line.rstrip()
+            tail = (tail + [line])[-40:]
+            stage = _helixsr_stage(line, es)
+            if stage:
+                task.update(*stage)
+        proc.wait()
+    finally:
+        timer.cancel()
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait()
+    if timed_out.is_set():
+        raise ctx.Unavailable("the HelixSR download timed out")
+    if proc.returncode != 0:
+        last = "\n".join(tail)
+        ctx.log.error("%s exited %s: %s", HELIXSR_SCRIPT, proc.returncode, last)
+        error = next((l for l in reversed(tail) if "error" in l), tail[-1] if tail else "")
+        raise ctx.Unavailable(f"download script exited {proc.returncode}: {error}")
+    task.done("Listo" if es else "Done")
 
 
 def game_info(appid=None):
