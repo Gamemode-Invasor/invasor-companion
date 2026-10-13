@@ -710,7 +710,7 @@ function addTo(el: HTMLElement, ctx: ModuleCtx, t: Strings) {
   el.append(choose, path, add);
 }
 
-interface CleanItem { path: string; appid: string; size: number; kind?: string }
+interface CleanItem { path: string; appid: string; name: string; size: number; kind?: string }
 interface CleanScan { prefixes: CleanItem[]; grids: CleanItem[] }
 
 const formatSize = (n: number) => (n >= 1e9 ? `${(n / 1e9).toFixed(2)} GB` : `${(n / 1e6).toFixed(1)} MB`);
@@ -743,8 +743,8 @@ function cleaning(el: HTMLElement, ctx: ModuleCtx, t: Strings) {
       const found = await ctx.call<CleanScan>("clean_scan");
       picked.clear();
       const rows = [
-        ...group(t.cleanPrefixes, found.prefixes, (i) => `${i.appid} · ${i.kind}`),
-        ...group(t.cleanGrids, found.grids, (i) => i.path.split("/").pop() ?? i.path),
+        ...group(t.cleanPrefixes, found.prefixes, (i) => `${i.appid} - ${i.name || "¿?"} · ${i.kind}`),
+        ...group(t.cleanGrids, found.grids, (i) => `${i.path.split("/").pop() ?? i.path}${i.name ? ` - ${i.name}` : ""}`),
       ];
       if (!rows.length) return list.replaceChildren(ui.info(t.cleanNothing));
       list.replaceChildren(

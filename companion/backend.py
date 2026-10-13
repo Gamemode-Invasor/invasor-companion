@@ -258,9 +258,20 @@ def game_info(appid=None):
     return gameinfo.game_info(appid, name=known.get("name"), shortcut=known.get("shortcut"))
 
 
+# AppID -> name of every game seen, so an orphan can say what it was.
+NAMES_FILE = Path.home() / ".local/share/invasor/user-modules/companion/names.json"
+
+
 def clean_scan():
     """What can be cleaned: orphan compatdata/shadercache folders and unused grid images (see cleaner.scan)."""
-    return cleaner.scan()
+
+    def name_of(appid):
+        try:
+            return (ctx.game.info(appid) or {}).get("name")
+        except Exception:
+            return None
+
+    return cleaner.scan(names_file=NAMES_FILE, name_of=name_of)
 
 
 def clean_delete(paths):
