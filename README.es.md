@@ -10,6 +10,8 @@ Opciones de lanzamiento del juego. Añade una pestaña **Compa** (que no aparece
   FG/escaladores (MAKO, lsfg-vk, FSR 4, HelixSR), MangoHud (límite de FPS, API y FPS), gráficos (wined3d, Zink, HDR, Direct3D),
   Proton (compatibilidad de 32 bits, large address aware, esync/fsync, prefijo elegido en un explorador de carpetas que empieza en `compatdata` y puede ir a cualquier sitio), entorno (DLL overrides, «no es una Steam Deck» = `SteamDeck=0`, variables personalizadas)
   y *Restablecer todo*. Las combinaciones incompatibles o vacías muestran un aviso. Las elecciones no se guardan: se restablecen al recargar la pestaña.
+  MAKO y lsfg-vk se excluyen entre sí, y también FSR 4 y HelixSR: al activar uno se desactiva el otro.
+  HelixSR necesita sus DLL: *Descargar y generar DLL* baja el release y las compila con el setup oficial (la UI pide confirmar la licencia de DLSS), y *Copiar DLL al juego* las pone en el prefijo del juego. Es una tarea pesada: aparece como tarea en el panel **Tasks** de Invasor (Select en el panel de Invasor) con su progreso, se ejecuta de una en una y se rechaza mientras hay un juego en ejecución.
 - **Juego**: todo lo que los archivos de Steam dicen del juego actual (la página abierta; si no, el resaltado; si no, el
   que se está ejecutando), agrupado en secciones: general, instalación (biblioteca, carpeta, tamaño, estado, compilación, actualizaciones), juego (última
   partida, tiempo de juego, opciones de lanzamiento), compatibilidad (herramienta, prefijo) y, para los accesos directos que no son de Steam, su ejecutable, directorio
@@ -17,11 +19,15 @@ Opciones de lanzamiento del juego. Añade una pestaña **Compa** (que no aparece
 - **Steam**: elige cualquier archivo (un explorador que empieza en tu carpeta personal, con cualquier extensión) y pulsa *Añadir a Steam*. Le pide
   a Steam que lo añada como juego que no es de Steam de la forma que Steam admite: crea `/tmp/addnonsteamgamefile` y abre
   `steam://addnonsteamgame/<ruta codificada>` con `xdg-open`. `xdg-open` se ejecuta con el entorno de la sesión gráfica (el servicio no tiene ninguno) y se comprueba su resultado. Steam muestra su propio diálogo de confirmación; después el módulo espera a que el acceso directo aparezca en `shortcuts.vdf`.
+  Debajo, una sección plegada **Limpieza** lista las carpetas `compatdata`/`shadercache` de juegos que ya no están instalados (en todas las bibliotecas) y las imágenes de `userdata/*/config/grid` que no son de ningún juego ni acceso directo. Todo viene marcado; tú eliges y confirmas, y solo se borran elementos de un análisis recién hecho. Los nombres de los juegos se recuerdan en `~/.local/share/invasor/companion/names.json` (se actualizan en cada inicio de Steam) para que una carpeta sobrante diga qué era.
   Debajo, una sección plegada **Limpieza** lista las carpetas `compatdata`/`shadercache` de juegos que ya no están instalados (en todas las bibliotecas) y las imágenes de `userdata/*/config/grid` que no son de ningún juego ni acceso directo. Todo viene marcado; eliges y confirmas, y solo se borra lo que sale de un escaneo nuevo.
 - **Créditos**: el autor.
 
 Los textos siguen el idioma de Steam (español o inglés). La lógica es un port del lanzador Companion de
 `../companion`; solo construye el texto, nunca escribe en ningún juego.
+
+## Requisitos
+Invasor 0.2.0 o posterior (`min_core`): usa `ctx.task` y `ctx.events`.
 
 ## Compilar, probar e instalar
 Con el núcleo descargado junto a este repositorio (`../invasor`):

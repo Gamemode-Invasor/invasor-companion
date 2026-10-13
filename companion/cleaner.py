@@ -101,6 +101,8 @@ def scan(steam_root=steam.STEAM_ROOT, libraries=None, names=None, save_names=Non
     folders = list(_prefix_folders(libraries))
     # A game with a prefix keeps its art, as Grid Cleaner did.
     in_use = known | {f.name for _lib, _kind, f in folders}
+    # Older Steam names a shortcut's art by its 64-bit id (appid << 32 | 0x02000000): those are in use too.
+    in_use |= {str((int(a) << 32) | 0x02000000) for a in known}
     prefixes = [
         {"path": str(f), "appid": f.name, "name": name(f.name), "kind": kind, "library": str(lib), "size": _size(f)}
         for lib, kind, f in folders

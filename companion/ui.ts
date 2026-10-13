@@ -53,7 +53,7 @@ const T = {
     cleanAsk: "¿Eliminar %n% elementos? No se puede deshacer.",
     cleanDone: "Eliminados: %n%",
     cleanFailed: "No se pudieron eliminar: %n%",
-    helixsrHeavy: "Tarea pesada: puedes seguirla en Tareas (Select en el panel de Invasor)",
+    helixsrHeavy: "Tarea pesada: puedes seguirla en Tasks (Select en el panel de Invasor)",
     helixsrGameRunning: "Hay un juego en ejecución: ciérralo para descargar HelixSR, es una tarea pesada",
     mangohud: "MangoHud",
     mangohudHint: "Con cualquier opción de MangoHud se añade el comando mangohud antes de %command%.",
