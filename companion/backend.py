@@ -1,5 +1,7 @@
 """Companion: builds Steam launch options (VAR=value ... %command%) from the Launcher tab's choices."""
+import filecmp
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -86,6 +88,93 @@ def is_added(path):
     return steam.shortcut_added(path)
 
 
+HELIXSR_DIR = Path.home() / ".local/share/invasor/user-modules/companion/HelixSR"
+HELIXSR_DLLS = ("amd_fidelityfx_dx12.dll", "amd_fidelityfx_upscaler_dx12.dll")
+# The script that fetches and builds the DLLs into HELIXSR_DIR (shipped in the module's bin/).
+HELIXSR_SCRIPT = Path(__file__).resolve().parent / "bin" / "helixsr-fetch.sh"
+HELIXSR_TIMEOUT = 1800
+
+
+def _appid(appid):
+    """The digits of a real AppID (it ends up in paths), or None for no game."""
+    if appid in (None, ""):
+        return None
+    appid = str(appid)
+    if not (appid.isascii() and appid.isdigit()):
+        raise ctx.InvalidArgument("appid must be a number")
+    return appid
+
+
+def _game_dest(appid):
+    """compatdata/<appid>/pfx/drive_c/HelixSR of the first library that has the game's prefix, else None."""
+    for lib in steam.libraries():
+        drive_c = lib / "compatdata" / appid / "pfx" / "drive_c"
+        if drive_c.is_dir():
+            return drive_c / "HelixSR"
+    return None
+
+
+def _in_sync(dest):
+    """Does dest hold every file of HELIXSR_DIR, identical?"""
+    files = [p for p in HELIXSR_DIR.rglob("*") if p.is_file()]
+    return bool(files) and all(
+        (dest / p.relative_to(HELIXSR_DIR)).is_file()
+        and filecmp.cmp(p, dest / p.relative_to(HELIXSR_DIR), shallow=False)
+        for p in files
+    )
+
+
+def helixsr_status(appid=None):
+    """{"found", "dir", "game"}: found when both DLLs are in HELIXSR_DIR.
+
+    game is None without a game; else {"prefix": bool, "copy": bool}: does it have a prefix, and does
+    HelixSR need copying into it (missing folder or different files)?
+    """
+    found = all((HELIXSR_DIR / name).is_file() for name in HELIXSR_DLLS)
+    game = None
+    appid = _appid(appid)
+    if appid:
+        dest = _game_dest(appid)
+        game = {"prefix": dest is not None, "copy": found and dest is not None and not _in_sync(dest)}
+    return {"found": found, "dir": str(HELIXSR_DIR), "game": game}
+
+
+def helixsr_copy(appid):
+    """Copies HELIXSR_DIR into the game's prefix (C:\\HelixSR); returns helixsr_status(appid)."""
+    appid = _appid(appid)
+    if not appid:
+        raise ctx.InvalidArgument("no game")
+    if not helixsr_status()["found"]:
+        raise ctx.Unavailable("the HelixSR DLLs are not generated yet")
+    dest = _game_dest(appid)
+    if dest is None:
+        raise ctx.Unavailable("the game has no Proton prefix yet (run it once)")
+    try:
+        shutil.copytree(HELIXSR_DIR, dest, dirs_exist_ok=True)
+    except OSError as e:
+        raise ctx.Unavailable(f"could not copy HelixSR: {e}")
+    ctx.log.info("copied HelixSR to %s", dest)
+    return helixsr_status(appid)
+
+
+def helixsr_download(appid=None):
+    """Runs the download script, then says what is there (see helixsr_status)."""
+    if not HELIXSR_SCRIPT.is_file():
+        raise ctx.Unavailable(f"download script not found: {HELIXSR_SCRIPT}")
+    try:
+        # No shell; --yes accepts the DLSS licence prompt (the UI is the user's confirmation).
+        done = subprocess.run(["bash", str(HELIXSR_SCRIPT), "--yes", "--out", str(HELIXSR_DIR)], stdin=subprocess.DEVNULL,
+                              capture_output=True, text=True, timeout=HELIXSR_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        raise ctx.Unavailable("the HelixSR download timed out")
+    except OSError as e:
+        raise ctx.Unavailable(f"could not run the download script: {e}")
+    if done.returncode != 0:
+        ctx.log.error("%s exited %s: %s", HELIXSR_SCRIPT, done.returncode, done.stderr.strip())
+        raise ctx.Unavailable(f"download script exited {done.returncode}: {done.stderr.strip()}")
+    return helixsr_status(appid)
+
+
 def game_info(appid=None):
     """What Steam's files say about a game (default: the selected one), for the Game tab."""
     if appid in (None, ""):
@@ -105,4 +194,5 @@ def game_info(appid=None):
 
 
 METHODS = {"build": build, "language": language, "browse": browse, "add_to_steam": add_to_steam,
-           "is_added": is_added, "game_info": game_info}
+           "is_added": is_added, "game_info": game_info, "helixsr_status": helixsr_status,
+           "helixsr_download": helixsr_download, "helixsr_copy": helixsr_copy}
