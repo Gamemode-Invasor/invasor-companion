@@ -5,7 +5,7 @@ from the panel, with the gamepad, and copies them to the clipboard. Paste the re
 Launch options. It adds a **Compa** tab (not shown in the Quick Access) with four pages:
 
 - **Lanzador** (Launcher): a live preview of the command and a *Copy* button on top, then the options in sections:
-  FG/upscalers (MAKO, lsfg-vk, FSR 4), MangoHud (FPS limit, API and FPS), graphics (wined3d, Zink, HDR, Direct3D),
+  FG/upscalers (MAKO, lsfg-vk, FSR 4, HelixSR), MangoHud (FPS limit, API and FPS), graphics (wined3d, Zink, HDR, Direct3D),
   Proton (32-bit compatibility, large address aware, esync/fsync, prefix chosen in a folder browser that starts at `compatdata` and can go anywhere), environment (DLL overrides, "not a Steam Deck" = `SteamDeck=0`, custom variables)
   and *Reset all*. Incompatible or empty combinations show a warning. The choices are not saved: they reset when the tab reloads.
 - **Game**: everything Steam's files say about the current game (the open page, else the highlighted one, else the
