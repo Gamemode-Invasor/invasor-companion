@@ -1,5 +1,4 @@
 """Cleaning of what Steam leaves behind: compatdata/shadercache of games that are gone, and unused grid images."""
-import json
 import os
 import re
 import shutil
@@ -70,43 +69,32 @@ def _prefix_folders(libraries):
                     yield Path(lib), kind, Path(e.path)
 
 
-def _load_names(path):
-    try:
-        data = json.loads(Path(path).read_text())
-    except (OSError, ValueError):
-        return {}
-    return {str(k): v for k, v in data.items() if isinstance(v, str)} if isinstance(data, dict) else {}
+def remember_names(steam_root=steam.STEAM_ROOT, libraries=None, names=None, save_names=None):
+    """Adds the installed games and shortcuts to the {appid: name} cache; save_names(names) stores it if it grew.
+
+    Returns (known ids, names): the apps that exist now and everything the cache knows.
+    """
+    libraries = steam.libraries(steam_root) if libraries is None else libraries
+    seen = {**_installed_names(libraries), **_shortcut_names(steam_root)}
+    names = dict(names or {})
+    fresh = {k: v for k, v in seen.items() if v and names.get(k) != v}
+    names.update(fresh)
+    if fresh and save_names:
+        save_names(names)
+    return set(seen), names
 
 
-def _remember(path, names):
-    """Saves the names of the games seen, so an orphan can still say what it was. Failing to save is harmless."""
-    try:
-        Path(path).parent.mkdir(parents=True, exist_ok=True)
-        tmp = Path(str(path) + ".tmp")
-        tmp.write_text(json.dumps(names, ensure_ascii=False, sort_keys=True))
-        os.replace(tmp, path)
-    except OSError:
-        pass
-
-
-def scan(steam_root=steam.STEAM_ROOT, libraries=None, names_file=None, name_of=lambda appid: None):
+def scan(steam_root=steam.STEAM_ROOT, libraries=None, names=None, save_names=None, name_of=lambda appid: None):
     """{"prefixes": [{"path", "appid", "name", "kind", "library", "size"}], "grids": [{"path", "appid", "name", "size"}]}.
 
-    name: what the app was called, from names_file (a {appid: name} cache of every game seen by past scans,
-    updated here) or name_of(appid); "" if unknown.
+    name: what the app was called, from `names` (an {appid: name} cache of every game seen by past scans, which
+    save_names(names) stores again when it grows) or name_of(appid); "" if unknown.
 
     prefixes: compatdata/shadercache folders of an app that is neither installed nor a shortcut.
     grids: images of userdata/*/config/grid whose AppID is not installed, a shortcut or a game with a prefix.
     """
     libraries = steam.libraries(steam_root) if libraries is None else libraries
-    seen = {**_installed_names(libraries), **_shortcut_names(steam_root)}
-    known = set(seen)
-    names = _load_names(names_file) if names_file else {}
-    fresh = {k: v for k, v in seen.items() if v and names.get(k) != v}
-    if fresh and names_file:
-        names.update(fresh)
-        _remember(names_file, names)
-    names.update(fresh)
+    known, names = remember_names(steam_root, libraries, names, save_names)
 
     def name(appid):
         return names.get(appid) or str(name_of(appid) or "")
