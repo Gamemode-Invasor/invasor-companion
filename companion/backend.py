@@ -3,6 +3,7 @@ import filecmp
 import os
 import shutil
 import subprocess
+import threading
 from pathlib import Path
 
 from . import command, gameinfo, steam
@@ -93,6 +94,7 @@ HELIXSR_DLLS = ("amd_fidelityfx_dx12.dll", "amd_fidelityfx_upscaler_dx12.dll")
 # The script that fetches and builds the DLLs into HELIXSR_DIR (shipped in the module's bin/).
 HELIXSR_SCRIPT = Path(__file__).resolve().parent / "bin" / "helixsr-fetch.sh"
 HELIXSR_TIMEOUT = 1800
+_helixsr_busy = threading.Lock()
 
 
 def _appid(appid):
@@ -161,6 +163,9 @@ def helixsr_download(appid=None):
     """Runs the download script, then says what is there (see helixsr_status)."""
     if not HELIXSR_SCRIPT.is_file():
         raise ctx.Unavailable(f"download script not found: {HELIXSR_SCRIPT}")
+    # One download at a time: two scripts would write the same folder.
+    if not _helixsr_busy.acquire(blocking=False):
+        raise ctx.Unavailable("a HelixSR download is already running")
     try:
         # No shell; --yes accepts the DLSS licence prompt (the UI is the user's confirmation).
         done = subprocess.run(["bash", str(HELIXSR_SCRIPT), "--yes", "--out", str(HELIXSR_DIR)], stdin=subprocess.DEVNULL,
@@ -169,6 +174,8 @@ def helixsr_download(appid=None):
         raise ctx.Unavailable("the HelixSR download timed out")
     except OSError as e:
         raise ctx.Unavailable(f"could not run the download script: {e}")
+    finally:
+        _helixsr_busy.release()
     if done.returncode != 0:
         ctx.log.error("%s exited %s: %s", HELIXSR_SCRIPT, done.returncode, done.stderr.strip())
         raise ctx.Unavailable(f"download script exited {done.returncode}: {done.stderr.strip()}")

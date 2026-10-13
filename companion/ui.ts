@@ -470,7 +470,9 @@ async function launcher(el: HTMLElement, ctx: ModuleCtx, t: Strings) {
   const helixsrStatus = ui.info("");
   let helixsrFound = false;
   let helixsrCopyNeeded = false;
+  let helixsrBusy = false;
   async function paintHelixsr() {
+    if (helixsrBusy) return; // the download repaints when it ends
     const appid = currentGame(ctx.game())?.game.appid ?? "";
     try {
       const st = await ctx.call<{ found: boolean; dir: string; game: { copy: boolean } | null }>(
@@ -490,12 +492,17 @@ async function launcher(el: HTMLElement, ctx: ModuleCtx, t: Strings) {
   const helixsrDownload = ui.button({
     label: t.helixsrDownload,
     onClick: async () => {
+      if (helixsrBusy) return;
+      helixsrBusy = true;
+      helixsrDownload.style.display = "none";
       helixsrStatus.textContent = t.helixsrDownloading;
       try {
         await ctx.call("helixsr_download");
         ctx.toast(t.helixsrDone, "ok");
       } catch {
         ctx.toast(t.helixsrFailed, "error");
+      } finally {
+        helixsrBusy = false;
       }
       await paintHelixsr();
     },
@@ -529,7 +536,7 @@ async function launcher(el: HTMLElement, ctx: ModuleCtx, t: Strings) {
     dep(lsfgProfile, s().lsfg.on);
     dep(fsr4Indicator, s().fsr4.on);
     dep(helixsrStatus, s().helixsr.on);
-    dep(helixsrDownload, s().helixsr.on && !helixsrFound);
+    dep(helixsrDownload, s().helixsr.on && !helixsrFound && !helixsrBusy);
     dep(helixsrCopy, s().helixsr.on && helixsrFound && helixsrCopyNeeded);
     dep(fpsValue, s().fpsLimit.on);
     dep(chooseFolder, s().prefix.on);
