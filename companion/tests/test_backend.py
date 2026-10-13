@@ -31,6 +31,30 @@ class FakeCtx:
     class Unavailable(Exception):
         pass
 
+    class Task:
+        def __init__(self, label):
+            self.label, self.calls, self.end = label, [], None
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, kind, error, tb):
+            if self.end is None:
+                self.end = ("fail", str(error)) if error else ("done", "")
+
+        def update(self, fraction, text):
+            self.calls.append((fraction, text))
+
+        def done(self, text=""):
+            self.end = ("done", text)
+
+    tasks = []
+
+    @classmethod
+    def task(cls, label):
+        cls.tasks.append(cls.Task(label))
+        return cls.tasks[-1]
+
     class game:
         selected = None
 
@@ -85,43 +109,84 @@ class BackendTest(unittest.TestCase):
                 backend.helixsr_copy("42")
                 self.assertEqual((dest / backend.HELIXSR_DLLS[1]).read_text(), "new")
 
-    def test_helixsr_download(self):
+    @staticmethod
+    def fake_proc(lines, code=0):
+        proc = mock.Mock(returncode=code, stdout=iter(lines))
+        proc.poll.return_value = code
+        return proc
+
+    def helixsr_backend(self, d):
         backend = load_backend()
+        FakeCtx.tasks = []
         backend.setup(FakeCtx())
+        backend.language = lambda: "en"
+        backend.HELIXSR_DIR = Path(d) / "HelixSR"
+        backend.HELIXSR_SCRIPT = Path(d) / "fetch.sh"
+        return backend
+
+    def test_helixsr_download(self):
         with tempfile.TemporaryDirectory() as d:
-            backend.HELIXSR_DIR = Path(d) / "HelixSR"
-            backend.HELIXSR_SCRIPT = Path(d) / "missing.sh"
+            backend = self.helixsr_backend(d)
             with self.assertRaises(FakeCtx.Unavailable):
                 backend.helixsr_download()
             backend.HELIXSR_SCRIPT.write_text("#!/bin/bash\n")
-            with mock.patch.object(backend.subprocess, "run", return_value=mock.Mock(returncode=1, stderr="no")):
+            lines = ["[helixsr-fetch] buscando la última versión (stable)...\n", "[helixsr-fetch] versión: v1\n",
+                     "noise from the setup\n", "[helixsr-fetch] descargando...\n",
+                     "[helixsr-fetch] compilando HelixSR (puede tardar unos minutos)...\n", "[helixsr-fetch] listo: x\n"]
+            with mock.patch.object(backend.subprocess, "Popen", return_value=self.fake_proc(lines)) as popen:
+                self.assertFalse(backend.helixsr_download()["found"])
+            self.assertEqual(popen.call_args.args[0], ["bash", str(backend.HELIXSR_SCRIPT), "--yes", "--out", str(backend.HELIXSR_DIR)])
+            task = FakeCtx.tasks[-1]
+            self.assertEqual(task.label, "Downloading HelixSR")
+            self.assertEqual([c[0] for c in task.calls], [0.0, 0.05, 0.10, 0.20, None])
+            self.assertEqual(task.end, ("done", "Done"))
+
+    def test_helixsr_download_failure_fails_the_task(self):
+        with tempfile.TemporaryDirectory() as d:
+            backend = self.helixsr_backend(d)
+            backend.HELIXSR_SCRIPT.write_text("#!/bin/bash\n")
+            proc = self.fake_proc(["[helixsr-fetch] error: no network\n"], code=1)
+            with mock.patch.object(backend.subprocess, "Popen", return_value=proc):
                 with self.assertRaises(FakeCtx.Unavailable):
                     backend.helixsr_download()
-            with mock.patch.object(backend.subprocess, "run", return_value=mock.Mock(returncode=0, stderr="")) as run:
-                self.assertFalse(backend.helixsr_download()["found"])
-            self.assertEqual(run.call_args.args[0], ["bash", str(backend.HELIXSR_SCRIPT), "--yes", "--out", str(backend.HELIXSR_DIR)])
+            self.assertEqual(FakeCtx.tasks[-1].end[0], "fail")
+            self.assertIn("no network", FakeCtx.tasks[-1].end[1])
+            # the lock is free again
+            with mock.patch.object(backend.subprocess, "Popen", return_value=self.fake_proc([])):
+                backend.helixsr_download()
+
+    def test_helixsr_download_times_out(self):
+        with tempfile.TemporaryDirectory() as d:
+            backend = self.helixsr_backend(d)
+            backend.HELIXSR_SCRIPT.write_text("#!/bin/bash\n")
+            backend.HELIXSR_TIMEOUT = 0
+            proc = mock.Mock(returncode=-9)
+            proc.stdout = iter(())
+            proc.poll.return_value = -9
+            proc.kill.side_effect = lambda: None
+
+            def slow_wait():
+                import time
+                time.sleep(0.2)  # the timer fires while "waiting"
+            proc.wait.side_effect = slow_wait
+            with mock.patch.object(backend.subprocess, "Popen", return_value=proc):
+                with self.assertRaises(FakeCtx.Unavailable):
+                    backend.helixsr_download()
+            proc.kill.assert_called()
+            self.assertEqual(FakeCtx.tasks[-1].end[0], "fail")
 
     def test_helixsr_download_is_exclusive(self):
-        backend = load_backend()
-        backend.setup(FakeCtx())
         with tempfile.TemporaryDirectory() as d:
-            backend.HELIXSR_DIR = Path(d) / "HelixSR"
-            backend.HELIXSR_SCRIPT = Path(d) / "fetch.sh"
+            backend = self.helixsr_backend(d)
             backend.HELIXSR_SCRIPT.write_text("#!/bin/bash\n")
-            with mock.patch.object(backend.subprocess, "run") as run:
-                def second(*a, **k):
-                    with self.assertRaises(FakeCtx.Unavailable):
-                        backend.helixsr_download()  # a click while the first one runs
-                    return mock.Mock(returncode=0, stderr="")
-                run.side_effect = second
-                backend.helixsr_download()
-                self.assertEqual(run.call_count, 1)
-            # the lock is free again, also after a failure
-            with mock.patch.object(backend.subprocess, "run", return_value=mock.Mock(returncode=1, stderr="x")):
+
+            def second(*a, **k):
                 with self.assertRaises(FakeCtx.Unavailable):
-                    backend.helixsr_download()
-            with mock.patch.object(backend.subprocess, "run", return_value=mock.Mock(returncode=0, stderr="")):
+                    backend.helixsr_download()  # a click while the first one runs
+                return self.fake_proc([])
+            with mock.patch.object(backend.subprocess, "Popen", side_effect=second) as popen:
                 backend.helixsr_download()
+                self.assertEqual(popen.call_count, 1)
 
     def test_build_uses_home_and_ignores_garbage(self):
         backend = load_backend()
