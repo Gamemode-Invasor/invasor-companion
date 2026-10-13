@@ -1,5 +1,6 @@
 """Companion: builds Steam launch options (VAR=value ... %command%) from the Launcher tab's choices."""
 import filecmp
+import json
 import os
 import shutil
 import subprocess
@@ -14,6 +15,8 @@ ctx = None
 def setup(context):
     global ctx
     ctx = context
+    # Also runs now if Steam is already up: the names are kept fresh without opening the Cleaning section.
+    ctx.events.on("steam_start", refresh_names)
 
 
 def build(state):
@@ -258,8 +261,37 @@ def game_info(appid=None):
     return gameinfo.game_info(appid, name=known.get("name"), shortcut=known.get("shortcut"))
 
 
-# AppID -> name of every game seen, so an orphan can say what it was.
-NAMES_FILE = Path.home() / ".local/share/invasor/user-modules/companion/names.json"
+# AppID -> name of every game seen, so an orphan can say what it was. Data, not config, and outside the
+# module's folder (user-modules/companion), which a reinstall replaces.
+NAMES_FILE = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")) / "invasor/companion/names.json"
+
+
+def _load_names():
+    try:
+        data = json.loads(NAMES_FILE.read_text())
+    except (OSError, ValueError):
+        return {}
+    return {str(k): v for k, v in data.items() if isinstance(v, str)} if isinstance(data, dict) else {}
+
+
+def _save_names(names):
+    """Failing to save is harmless: the next scan tries again."""
+    try:
+        NAMES_FILE.parent.mkdir(parents=True, exist_ok=True)
+        tmp = NAMES_FILE.with_suffix(".tmp")
+        tmp.write_text(json.dumps(names, ensure_ascii=False, sort_keys=True))
+        os.replace(tmp, NAMES_FILE)
+    except OSError as e:
+        ctx.log.warning("could not save %s: %s", NAMES_FILE, e)
+
+
+def refresh_names(payload=None):
+    """Steam started: remember the names of the installed games and shortcuts (it runs in its own thread)."""
+    try:
+        _, names = cleaner.remember_names(names=_load_names(), save_names=_save_names)
+        ctx.log.info("game names known: %d", len(names))
+    except Exception:
+        ctx.log.exception("could not refresh the game names")
 
 
 def clean_scan():
@@ -271,7 +303,7 @@ def clean_scan():
         except Exception:
             return None
 
-    return cleaner.scan(names_file=NAMES_FILE, name_of=name_of)
+    return cleaner.scan(names=_load_names(), name_of=name_of, save_names=_save_names)
 
 
 def clean_delete(paths):

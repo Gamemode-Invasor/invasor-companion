@@ -48,6 +48,13 @@ class FakeCtx:
         def done(self, text=""):
             self.end = ("done", text)
 
+    class events:
+        handlers = {}
+
+        @classmethod
+        def on(cls, name, callback):
+            cls.handlers[name] = callback
+
     tasks = []
 
     @classmethod
@@ -278,6 +285,17 @@ class BackendTest(unittest.TestCase):
         backend.setup(FakeCtx())
         out = backend.browse("/nonexistent-companion-dir", files=True, home=True)
         self.assertEqual(out["path"], str(Path.home().resolve()))
+
+    def test_names_are_refreshed_on_steam_start(self):
+        backend = load_backend()
+        ctx = FakeCtx()
+        backend.setup(ctx)
+        self.assertIs(ctx.events.handlers["steam_start"], backend.refresh_names)
+        with mock.patch.object(backend.cleaner, "remember_names", return_value=(set(), {"1": "A"})) as remember:
+            backend.refresh_names({})
+            self.assertIs(remember.call_args.kwargs["save_names"], backend._save_names)
+        with mock.patch.object(backend.cleaner, "remember_names", side_effect=OSError("x")):
+            backend.refresh_names()  # a failure is logged, not raised
 
     def test_clean_delete_rejects_bad_arguments(self):
         backend = load_backend()
