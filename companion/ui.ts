@@ -30,10 +30,10 @@ const T = {
     lsfg: "Lossless Scaling (lsfg-vk)",
     lsfgHint: "Con el plugin de Decky el perfil debe ser decky-lsfg-vk.",
     profile: "Perfil",
-    fsr4: "FSR4 (último)",
+    fsr4: "FSR4 (última versión)",
     fsr4Hint: "Usa la última versión de GE-Proton / proton-cachyos.",
     fsr4Indicator: "Indicador de FSR 4",
-    helixsr: "HelixSR escalador",
+    helixsr: "Escalador HelixSR",
     helixsrHint: "Añade PROTON_USE_OPTISCALER y su configuración. Incompatible con FSR4.",
     helixsrFound: "DLL encontradas (en %dir%)",
     helixsrMissing: "DLL no encontradas",
@@ -57,7 +57,7 @@ const T = {
     noD3d10: "Sin Direct3D 10",
     dxvkD3d8: "DXVK para Direct3D 8",
     proton: "Proton",
-    wow64: "Compatibilidad 32 bits",
+    wow64: "Compatibilidad con 32 bits",
     largeAddressAware: "Large address aware",
     noEsync: "Sin esync",
     noFsync: "Sin fsync",
@@ -71,14 +71,14 @@ const T = {
     sentToSteam: "Enviado a Steam: confirma en su diálogo",
     addFailed: "No se pudo añadir",
     gameNone: "Selecciona un juego para ver su información",
-    gameCopyValue: "A copiar",
+    gameCopyValue: "Pulsa para copiar",
     gameKindSteam: "Juego de Steam",
-    gameKindShortcut: "Atajo no-Steam",
+    gameKindShortcut: "Acceso directo no Steam",
     gg_general: "General",
     gg_install: "Instalación",
     gg_play: "Juego",
     gg_compat: "Compatibilidad",
-    gg_shortcut: "Atajo",
+    gg_shortcut: "Acceso directo",
     gg_links: "Enlaces",
     gk_name: "Nombre",
     gk_appid: "AppID",
@@ -134,6 +134,7 @@ const T = {
     w_empty_mako: "MAKO está activado pero el perfil está vacío.",
     w_empty_lsfg: "lsfg-vk está activado pero el perfil está vacío.",
     w_empty_prefix: "El prefijo está activado pero no hay carpeta elegida.",
+    w_mako_lsfg: "MAKO y lsfg-vk son incompatibles: solo se usa MAKO.",
     w_helixsr_fsr4: "HelixSR y FSR4 son incompatibles: solo se usa HelixSR.",
     w_empty_dll: "Las DLL están activadas pero el valor está vacío.",
     w_custom_invalid: "Nombre de variable no válido: ",
@@ -200,7 +201,7 @@ const T = {
     sentToSteam: "Sent to Steam: confirm in its dialog",
     addFailed: "Couldn't add it",
     gameNone: "Select a game to see its information",
-    gameCopyValue: "A copy",
+    gameCopyValue: "Press to copy",
     gameKindSteam: "Steam game",
     gameKindShortcut: "Non-Steam shortcut",
     gg_general: "General",
@@ -263,6 +264,7 @@ const T = {
     w_empty_mako: "MAKO is on but its profile is empty.",
     w_empty_lsfg: "lsfg-vk is on but its profile is empty.",
     w_empty_prefix: "The prefix is on but no folder is chosen.",
+    w_mako_lsfg: "MAKO and lsfg-vk are not compatible: only MAKO is used.",
     w_helixsr_fsr4: "HelixSR and FSR4 are not compatible: only HelixSR is used.",
     w_empty_dll: "DLL overrides are on but the value is empty.",
     w_custom_invalid: "Invalid variable name: ",
@@ -556,12 +558,28 @@ async function launcher(el: HTMLElement, ctx: ModuleCtx, t: Strings) {
     }
   }, t.helixsrHint);
 
+  // MAKO and lsfg-vk exclude each other: picking one turns the other off.
+  const makoToggle = toggle(t.mako, () => s().mako.on, (v) => {
+    s().mako.on = v;
+    if (v && s().lsfg.on) {
+      s().lsfg.on = false;
+      lsfgToggle.set(false);
+    }
+  }, t.makoHint);
+  const lsfgToggle = toggle(t.lsfg, () => s().lsfg.on, (v) => {
+    s().lsfg.on = v;
+    if (v && s().mako.on) {
+      s().mako.on = false;
+      makoToggle.set(false);
+    }
+  }, t.lsfgHint);
+
   const sections = [
     ui.section(t.frames, [
-      toggle(t.mako, () => s().mako.on, (v) => (s().mako.on = v), t.makoHint),
+      makoToggle,
       makoProfile,
       ui.separator(),
-      toggle(t.lsfg, () => s().lsfg.on, (v) => (s().lsfg.on = v), t.lsfgHint),
+      lsfgToggle,
       lsfgProfile,
       ui.separator(),
       fsr4Toggle,
