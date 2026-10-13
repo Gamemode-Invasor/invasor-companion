@@ -13,8 +13,15 @@ RESERVED = frozenset({
     "PROTON_USE_WINED3D", "MESA_LOADER_DRIVER_OVERRIDE", "STEAM_COMPAT_DATA_PATH", "WINEDLLOVERRIDES",
     "FSR4_UPGRADE", "PROTON_FSR4_UPGRADE", "PROTON_FSR4_INDICATOR", "DXVK_HDR", "PROTON_ENABLE_HDR",
     "PROTON_NO_D3D11", "PROTON_NO_D3D10", "PROTON_DXVK_D3D8", "PROTON_NO_ESYNC", "PROTON_NO_FSYNC",
-    "PROTON_FORCE_LARGE_ADDRESS_AWARE", "SteamDeck",
+    "PROTON_FORCE_LARGE_ADDRESS_AWARE", "SteamDeck", "PROTON_USE_OPTISCALER", "PROTON_OPTISCALER_CONFIG",
 })
+
+# HelixSR runs through OptiScaler; its DLLs live in C:\HelixSR inside the prefix.
+HELIXSR_CONFIG = (
+    "Upscalers.Dx12Upscaler=fsr31;"
+    "Libraries.FfxDx12Path=C:\\HelixSR\\amd_fidelityfx_dx12.dll;"
+    "Libraries.FfxDx12SRPath=C:\\HelixSR\\amd_fidelityfx_upscaler_dx12.dll"
+)
 
 # Boolean options: state key -> what it adds.
 FLAGS = (
@@ -34,6 +41,11 @@ FLAGS = (
 def quote(value):
     """Inside double quotes, for the shell Steam runs the options with."""
     return '"' + re.sub(r'([\\"$`])', r"\\\1", str(value)) + '"'
+
+
+def quote_single(value):
+    """Inside single quotes: nothing is interpreted, except the quote itself."""
+    return "'" + str(value).replace("'", "'\\''") + "'"
 
 
 def quote_if_needed(value):
@@ -77,10 +89,11 @@ def build(state, home="~"):
     """{"command", "warnings"}: command is "" when nothing is selected.
 
     Warnings are {"code", "name"?} for the UI to word: lsfg_wined3d, lsfg_mangohud, empty_mako,
-    empty_lsfg, empty_prefix, empty_dll, custom_invalid / custom_reserved / custom_duplicate (name).
+    empty_lsfg, empty_prefix, empty_dll, mako_lsfg, helixsr_fsr4, custom_invalid / custom_reserved / custom_duplicate (name).
     """
     variables, warnings = [], []
     mako, lsfg, fsr4 = _section(state, "mako"), _section(state, "lsfg"), _section(state, "fsr4")
+    helixsr = _section(state, "helixsr")
     prefix, dll = _section(state, "prefix"), _section(state, "dllOverrides")
 
     mako_profile = _text(mako.get("profile"))
@@ -90,16 +103,28 @@ def build(state, home="~"):
     elif mako.get("on"):
         warnings.append({"code": "empty_mako"})
 
+    # MAKO and lsfg-vk exclude each other (the UI turns one off when the other is picked).
+    use_lsfg = bool(lsfg.get("on")) and not mako.get("on")
+    if lsfg.get("on") and mako.get("on"):
+        warnings.append({"code": "mako_lsfg"})
     lsfg_profile = _text(lsfg.get("profile"))
-    if lsfg.get("on") and lsfg_profile:
+    if use_lsfg and lsfg_profile:
         variables.append("LSFGVK_PROFILE=" + quote(lsfg_profile) + " ENABLE_GAMESCOPE_WSI=0")
-    elif lsfg.get("on"):
+    elif use_lsfg:
         warnings.append({"code": "empty_lsfg"})
 
+    # HelixSR and FSR 4 exclude each other (the UI turns one off when the other is picked).
+    use_helixsr = bool(helixsr.get("on"))
+    use_fsr4 = bool(fsr4.get("on")) and not use_helixsr
+    if use_helixsr and fsr4.get("on"):
+        warnings.append({"code": "helixsr_fsr4"})
+    if use_helixsr:
+        variables.append("PROTON_USE_OPTISCALER=1 PROTON_OPTISCALER_CONFIG=" + quote_single(HELIXSR_CONFIG))
+
     # PROTON_FSR4_UPGRADE=1: GE-Proton / proton-cachyos pick the latest version.
-    if fsr4.get("on"):
+    if use_fsr4:
         variables.append("FSR4_UPGRADE=1 PROTON_FSR4_UPGRADE=1")
-    if fsr4.get("on") and state.get("fsr4Indicator"):
+    if use_fsr4 and state.get("fsr4Indicator"):
         variables.append("PROTON_FSR4_INDICATOR=1")
 
     mangohud = mangohud_config(state)
@@ -140,9 +165,9 @@ def build(state, home="~"):
             seen.add(name)
             variables.append(name + "=" + quote_if_needed(item.get("value", "")))
 
-    if lsfg.get("on") and state.get("wined3d"):
+    if use_lsfg and state.get("wined3d"):
         warnings.append({"code": "lsfg_wined3d"})
-    if lsfg.get("on") and mangohud:
+    if use_lsfg and mangohud:
         warnings.append({"code": "lsfg_mangohud"})
 
     wrappers = []

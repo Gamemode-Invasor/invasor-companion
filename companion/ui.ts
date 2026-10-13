@@ -30,9 +30,31 @@ const T = {
     lsfg: "Lossless Scaling (lsfg-vk)",
     lsfgHint: "Con el plugin de Decky el perfil debe ser decky-lsfg-vk.",
     profile: "Perfil",
-    fsr4: "FSR4 (último)",
+    fsr4: "FSR4 (última versión)",
     fsr4Hint: "Usa la última versión de GE-Proton / proton-cachyos.",
     fsr4Indicator: "Indicador de FSR 4",
+    helixsr: "Escalador HelixSR",
+    helixsrHint: "Añade PROTON_USE_OPTISCALER y su configuración. Incompatible con FSR4.",
+    helixsrFound: "DLL encontradas (en %dir%)",
+    helixsrMissing: "DLL no encontradas",
+    helixsrDownload: "Descargar y generar DLL",
+    helixsrCopy: "Copiar DLL al juego",
+    helixsrCopied: "DLL copiadas al juego",
+    helixsrCopyFailed: "No se pudieron copiar las DLL",
+    helixsrDownloading: "Descargando HelixSR…",
+    helixsrDone: "HelixSR descargado",
+    helixsrFailed: "No se pudo descargar HelixSR",
+    cleaning: "Limpieza",
+    cleanScan: "Buscar archivos sobrantes",
+    cleanPrefixes: "Prefijos y shaders de juegos que ya no están",
+    cleanGrids: "Imágenes no usadas",
+    cleanNothing: "No hay nada que limpiar",
+    cleanDelete: "Eliminar seleccionados",
+    cleanAsk: "¿Eliminar %n% elementos? No se puede deshacer.",
+    cleanDone: "Eliminados: %n%",
+    cleanFailed: "No se pudieron eliminar: %n%",
+    helixsrHeavy: "Tarea pesada: puedes seguirla en Tareas (Select en el panel de Invasor)",
+    helixsrGameRunning: "Hay un juego en ejecución: ciérralo para descargar HelixSR, es una tarea pesada",
     mangohud: "MangoHud",
     mangohudHint: "Con cualquier opción de MangoHud se añade el comando mangohud antes de %command%.",
     fpsLimit: "Limitar FPS",
@@ -46,7 +68,7 @@ const T = {
     noD3d10: "Sin Direct3D 10",
     dxvkD3d8: "DXVK para Direct3D 8",
     proton: "Proton",
-    wow64: "Compatibilidad 32 bits",
+    wow64: "Compatibilidad con 32 bits",
     largeAddressAware: "Large address aware",
     noEsync: "Sin esync",
     noFsync: "Sin fsync",
@@ -60,14 +82,14 @@ const T = {
     sentToSteam: "Enviado a Steam: confirma en su diálogo",
     addFailed: "No se pudo añadir",
     gameNone: "Selecciona un juego para ver su información",
-    gameCopyValue: "A copiar",
+    gameCopyValue: "Pulsa para copiar",
     gameKindSteam: "Juego de Steam",
-    gameKindShortcut: "Atajo no-Steam",
+    gameKindShortcut: "Acceso directo no Steam",
     gg_general: "General",
     gg_install: "Instalación",
     gg_play: "Juego",
     gg_compat: "Compatibilidad",
-    gg_shortcut: "Atajo",
+    gg_shortcut: "Acceso directo",
     gg_links: "Enlaces",
     gk_name: "Nombre",
     gk_appid: "AppID",
@@ -123,6 +145,8 @@ const T = {
     w_empty_mako: "MAKO está activado pero el perfil está vacío.",
     w_empty_lsfg: "lsfg-vk está activado pero el perfil está vacío.",
     w_empty_prefix: "El prefijo está activado pero no hay carpeta elegida.",
+    w_mako_lsfg: "MAKO y lsfg-vk son incompatibles: solo se usa MAKO.",
+    w_helixsr_fsr4: "HelixSR y FSR4 son incompatibles: solo se usa HelixSR.",
     w_empty_dll: "Las DLL están activadas pero el valor está vacío.",
     w_custom_invalid: "Nombre de variable no válido: ",
     w_custom_reserved: "Nombre reservado por otra opción: ",
@@ -150,6 +174,28 @@ const T = {
     fsr4: "FSR4 (latest)",
     fsr4Hint: "Uses the latest version of GE-Proton / proton-cachyos.",
     fsr4Indicator: "FSR 4 indicator",
+    helixsr: "HelixSR upscaler",
+    helixsrHint: "Adds PROTON_USE_OPTISCALER and its config. Not compatible with FSR4.",
+    helixsrFound: "DLLs found (in %dir%)",
+    helixsrMissing: "DLLs not found",
+    helixsrDownload: "Download and generate DLLs",
+    helixsrCopy: "Copy DLLs to the game",
+    helixsrCopied: "DLLs copied to the game",
+    helixsrCopyFailed: "Could not copy the DLLs",
+    helixsrDownloading: "Downloading HelixSR…",
+    helixsrDone: "HelixSR downloaded",
+    helixsrFailed: "Could not download HelixSR",
+    cleaning: "Cleaning",
+    cleanScan: "Look for leftover files",
+    cleanPrefixes: "Prefixes and shaders of games that are gone",
+    cleanGrids: "Unused images",
+    cleanNothing: "Nothing to clean",
+    cleanDelete: "Delete selected",
+    cleanAsk: "Delete %n% items? This can't be undone.",
+    cleanDone: "Deleted: %n%",
+    cleanFailed: "Could not delete: %n%",
+    helixsrHeavy: "Heavy task: you can follow it in Tasks (Select in the Invasor panel)",
+    helixsrGameRunning: "A game is running: close it to download HelixSR, it is a heavy task",
     mangohud: "MangoHud",
     mangohudHint: "With any MangoHud option, the mangohud command is added before %command%.",
     fpsLimit: "Limit FPS",
@@ -177,7 +223,7 @@ const T = {
     sentToSteam: "Sent to Steam: confirm in its dialog",
     addFailed: "Couldn't add it",
     gameNone: "Select a game to see its information",
-    gameCopyValue: "A copy",
+    gameCopyValue: "Press to copy",
     gameKindSteam: "Steam game",
     gameKindShortcut: "Non-Steam shortcut",
     gg_general: "General",
@@ -240,6 +286,8 @@ const T = {
     w_empty_mako: "MAKO is on but its profile is empty.",
     w_empty_lsfg: "lsfg-vk is on but its profile is empty.",
     w_empty_prefix: "The prefix is on but no folder is chosen.",
+    w_mako_lsfg: "MAKO and lsfg-vk are not compatible: only MAKO is used.",
+    w_helixsr_fsr4: "HelixSR and FSR4 are not compatible: only HelixSR is used.",
     w_empty_dll: "DLL overrides are on but the value is empty.",
     w_custom_invalid: "Invalid variable name: ",
     w_custom_reserved: "Name reserved by another option: ",
@@ -256,6 +304,7 @@ function defaults() {
     lsfg: { on: false, profile: "default" },
     fsr4: { on: false },
     fsr4Indicator: false,
+    helixsr: { on: false },
     fpsLimit: { on: false, value: 30 },
     showInfo: false,
     wined3d: false, zink: false, hdr: false, noD3d11: false, noD3d10: false, dxvkD3d8: false,
@@ -440,6 +489,63 @@ async function launcher(el: HTMLElement, ctx: ModuleCtx, t: Strings) {
   const makoProfile = text(t.profile, () => s().mako.profile, (v) => (s().mako.profile = v));
   const lsfgProfile = text(t.profile, () => s().lsfg.profile, (v) => (s().lsfg.profile = v));
   const fsr4Indicator = toggle(t.fsr4Indicator, () => s().fsr4Indicator, (v) => (s().fsr4Indicator = v));
+  const helixsrStatus = ui.info("");
+  let helixsrFound = false;
+  let helixsrCopyNeeded = false;
+  let helixsrBusy = false;
+  async function paintHelixsr() {
+    if (helixsrBusy) return; // the download repaints when it ends
+    const appid = currentGame(ctx.game())?.game.appid ?? "";
+    try {
+      const st = await ctx.call<{ found: boolean; dir: string; game: { copy: boolean } | null }>(
+        "helixsr_status",
+        appid ? { appid } : {},
+      );
+      helixsrFound = st.found;
+      helixsrCopyNeeded = !!st.game?.copy;
+      helixsrStatus.textContent = st.found ? t.helixsrFound.replace("%dir%", st.dir) : t.helixsrMissing;
+    } catch {
+      helixsrFound = false;
+      helixsrCopyNeeded = false;
+      helixsrStatus.textContent = t.helixsrMissing;
+    }
+    sync();
+  }
+  const helixsrDownload = ui.button({
+    label: t.helixsrDownload,
+    onClick: async () => {
+      if (helixsrBusy) return;
+      // Heavy: not while a game is running (the backend refuses too).
+      if (ctx.game().running) return ctx.toast(t.helixsrGameRunning, "error");
+      helixsrBusy = true;
+      helixsrDownload.style.display = "none";
+      helixsrStatus.textContent = `${t.helixsrDownloading} ${t.helixsrHeavy}`;
+      ctx.toast(t.helixsrHeavy, "ok");
+      try {
+        await ctx.call("helixsr_download");
+        ctx.toast(t.helixsrDone, "ok");
+      } catch {
+        ctx.toast(t.helixsrFailed, "error");
+      } finally {
+        helixsrBusy = false;
+      }
+      await paintHelixsr();
+    },
+  });
+  const helixsrCopy = ui.button({
+    label: t.helixsrCopy,
+    onClick: async () => {
+      const appid = currentGame(ctx.game())?.game.appid ?? "";
+      try {
+        await ctx.call("helixsr_copy", { appid });
+        ctx.toast(t.helixsrCopied, "ok");
+      } catch {
+        ctx.toast(t.helixsrCopyFailed, "error");
+      }
+      await paintHelixsr();
+    },
+  });
+  refreshHelixsr = paintHelixsr;
   const fpsValue = track(
     ui.number({
       label: t.fps, value: 30, min: 0, max: 240, step: 1,
@@ -454,27 +560,67 @@ async function launcher(el: HTMLElement, ctx: ModuleCtx, t: Strings) {
     dep(makoProfile, s().mako.on);
     dep(lsfgProfile, s().lsfg.on);
     dep(fsr4Indicator, s().fsr4.on);
+    dep(helixsrStatus, s().helixsr.on);
+    dep(helixsrDownload, s().helixsr.on && !helixsrFound && !helixsrBusy);
+    dep(helixsrCopy, s().helixsr.on && helixsrFound && helixsrCopyNeeded);
     dep(fpsValue, s().fpsLimit.on);
     dep(chooseFolder, s().prefix.on);
     dep(dllValue, s().dllOverrides.on);
   }
 
+  // FSR4 and HelixSR exclude each other: picking one turns the other off.
+  const fsr4Toggle = toggle(t.fsr4, () => s().fsr4.on, (v) => {
+    s().fsr4.on = v;
+    if (!v) {
+      s().fsr4Indicator = false;
+      fsr4Indicator.set(false);
+    } else if (s().helixsr.on) {
+      s().helixsr.on = false;
+      helixsrToggle.set(false);
+    }
+  }, t.fsr4Hint);
+  const helixsrToggle = toggle(t.helixsr, () => s().helixsr.on, (v) => {
+    s().helixsr.on = v;
+    if (v) {
+      s().fsr4.on = false;
+      s().fsr4Indicator = false;
+      fsr4Toggle.set(false);
+      fsr4Indicator.set(false);
+      void paintHelixsr();
+    }
+  }, t.helixsrHint);
+
+  // MAKO and lsfg-vk exclude each other: picking one turns the other off.
+  const makoToggle = toggle(t.mako, () => s().mako.on, (v) => {
+    s().mako.on = v;
+    if (v && s().lsfg.on) {
+      s().lsfg.on = false;
+      lsfgToggle.set(false);
+    }
+  }, t.makoHint);
+  const lsfgToggle = toggle(t.lsfg, () => s().lsfg.on, (v) => {
+    s().lsfg.on = v;
+    if (v && s().mako.on) {
+      s().mako.on = false;
+      makoToggle.set(false);
+    }
+  }, t.lsfgHint);
+
   const sections = [
     ui.section(t.frames, [
-      toggle(t.mako, () => s().mako.on, (v) => (s().mako.on = v), t.makoHint),
+      makoToggle,
       makoProfile,
       ui.separator(),
-      toggle(t.lsfg, () => s().lsfg.on, (v) => (s().lsfg.on = v), t.lsfgHint),
+      lsfgToggle,
       lsfgProfile,
       ui.separator(),
-      toggle(t.fsr4, () => s().fsr4.on, (v) => {
-        s().fsr4.on = v;
-        if (!v) {
-          s().fsr4Indicator = false;
-          fsr4Indicator.set(false);
-        }
-      }, t.fsr4Hint),
+      fsr4Toggle,
       fsr4Indicator,
+      ui.separator(),
+      helixsrToggle,
+      helixsrStatus,
+      helixsrDownload,
+      helixsrCopy,
     ], { open: false }),
     ui.section(t.mangohud, [
       toggle(t.fpsLimit, () => s().fpsLimit.on, (v) => (s().fpsLimit.on = v), t.mangohudHint),
@@ -510,6 +656,7 @@ async function launcher(el: HTMLElement, ctx: ModuleCtx, t: Strings) {
   drawCustom();
   paintPrefix();
   sync();
+  void paintHelixsr();
   el.append(preview, copy, warnings, ...sections, reset);
   await refresh();
 }
@@ -561,6 +708,75 @@ function addTo(el: HTMLElement, ctx: ModuleCtx, t: Strings) {
   });
   paint();
   el.append(choose, path, add);
+}
+
+interface CleanItem { path: string; appid: string; name: string; size: number; kind?: string }
+interface CleanScan { prefixes: CleanItem[]; grids: CleanItem[] }
+
+const formatSize = (n: number) => (n >= 1e9 ? `${(n / 1e9).toFixed(2)} GB` : `${(n / 1e6).toFixed(1)} MB`);
+
+// Cleaning: orphan compatdata/shadercache and unused grid images, picked one by one (all marked) and deleted.
+function cleaning(el: HTMLElement, ctx: ModuleCtx, t: Strings) {
+  const list = document.createElement("div");
+  const picked = new Set<string>();
+  let busy = false;
+
+  const group = (title: string, items: CleanItem[], label: (i: CleanItem) => string) =>
+    items.length
+      ? [
+          ui.info(title),
+          ...items.map((i) => {
+            picked.add(i.path);
+            return ui.toggle({
+              label: `${label(i)} (${formatSize(i.size)})`,
+              value: true,
+              onChange: (v) => void (v ? picked.add(i.path) : picked.delete(i.path)),
+            });
+          }),
+        ]
+      : [];
+
+  async function scan() {
+    if (busy) return;
+    busy = true;
+    try {
+      const found = await ctx.call<CleanScan>("clean_scan");
+      picked.clear();
+      const rows = [
+        ...group(t.cleanPrefixes, found.prefixes, (i) => `${i.appid} - ${i.name || "¿?"} · ${i.kind}`),
+        ...group(t.cleanGrids, found.grids, (i) => `${i.path.split("/").pop() ?? i.path}${i.name ? ` - ${i.name}` : ""}`),
+      ];
+      if (!rows.length) return list.replaceChildren(ui.info(t.cleanNothing));
+      list.replaceChildren(
+        ...rows,
+        ui.button({
+          label: t.cleanDelete,
+          onClick: async () => {
+            if (busy || !picked.size) return;
+            const n = String(picked.size);
+            if (!(await ui.confirm(t.cleanAsk.replace("%n%", n), { ok: t.cleanDelete, cancel: t.cancel }))) return;
+            busy = true;
+            try {
+              const out = await ctx.call<{ deleted: string[]; failed: string[] }>("clean_delete", { paths: [...picked] });
+              ctx.toast(t.cleanDone.replace("%n%", String(out.deleted.length)), "ok");
+              if (out.failed.length) ctx.toast(t.cleanFailed.replace("%n%", String(out.failed.length)), "error");
+            } catch {
+              ctx.toast(t.cleanFailed.replace("%n%", n), "error");
+            } finally {
+              busy = false;
+            }
+            await scan();
+          },
+        }),
+      );
+    } catch {
+      list.replaceChildren(ui.info(t.cleanNothing));
+    } finally {
+      busy = false;
+    }
+  }
+
+  el.append(ui.button({ label: t.cleanScan, onClick: () => void scan() }), list);
 }
 
 interface GameRow { key: string; value: string | number; type: string }
@@ -656,10 +872,11 @@ function credits(el: HTMLElement, t: Strings) {
 }
 
 let refreshGame: (() => Promise<void>) | null = null;
+let refreshHelixsr: (() => Promise<void>) | null = null;
 
 export default defineModule({
   tabsAlign: "justify",
-  onGameChange: () => void refreshGame?.(),
+  onGameChange: () => (void refreshGame?.(), void refreshHelixsr?.()),
   tabs: [
     {
       label: "Lanzador",
@@ -680,7 +897,11 @@ export default defineModule({
       label: "Steam",
       async render(el, ctx) {
         const lang = await ctx.call<Lang>("language");
-        addTo(el, ctx, T[lang] ?? T.en);
+        const t = T[lang] ?? T.en;
+        addTo(el, ctx, t);
+        const clean = document.createElement("div");
+        cleaning(clean, ctx, t);
+        el.append(ui.separator(), ui.section(t.cleaning, [clean], { open: false }));
       },
     },
     {

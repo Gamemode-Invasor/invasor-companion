@@ -39,9 +39,17 @@ class BuildTest(unittest.TestCase):
         self.assertEqual(out, 'MAKO_PROFILE="default" /home/u/.local/bin/mako-launch %command%')
 
     def test_empty_profile_warns(self):
-        out = build(mako={"on": True, "profile": "  "}, lsfg={"on": True, "profile": ""})
+        out = build(mako={"on": True, "profile": "  "})
         self.assertEqual(out["command"], "")
-        self.assertEqual([w["code"] for w in out["warnings"]], ["empty_mako", "empty_lsfg"])
+        self.assertEqual([w["code"] for w in out["warnings"]], ["empty_mako"])
+        out = build(lsfg={"on": True, "profile": ""})
+        self.assertEqual([w["code"] for w in out["warnings"]], ["empty_lsfg"])
+
+    def test_mako_excludes_lsfg(self):
+        out = build(mako={"on": True, "profile": "m"}, lsfg={"on": True, "profile": "l"})
+        self.assertNotIn("LSFGVK", out["command"])
+        self.assertIn("MAKO_PROFILE", out["command"])
+        self.assertEqual([w["code"] for w in out["warnings"]], ["mako_lsfg"])
 
     def test_lsfg_and_fsr4(self):
         out = build(lsfg={"on": True, "profile": "decky-lsfg-vk"}, fsr4={"on": True}, fsr4Indicator=True)
@@ -55,6 +63,25 @@ class BuildTest(unittest.TestCase):
         self.assertEqual(build(fsr4Indicator=True)["command"], "")
         out = build(fsr4={"on": True}, fsr4Indicator=True)["command"]
         self.assertIn("PROTON_FSR4_INDICATOR=1", out)
+
+    def test_helixsr(self):
+        self.assertEqual(build(helixsr={"on": False})["command"], "")
+        self.assertEqual(
+            build(helixsr={"on": True})["command"],
+            "PROTON_USE_OPTISCALER=1 PROTON_OPTISCALER_CONFIG='Upscalers.Dx12Upscaler=fsr31;"
+            "Libraries.FfxDx12Path=C:\\HelixSR\\amd_fidelityfx_dx12.dll;"
+            "Libraries.FfxDx12SRPath=C:\\HelixSR\\amd_fidelityfx_upscaler_dx12.dll' %command%",
+        )
+
+    def test_helixsr_excludes_fsr4(self):
+        out = build(helixsr={"on": True}, fsr4={"on": True}, fsr4Indicator=True)
+        self.assertNotIn("FSR4", out["command"])
+        self.assertIn("PROTON_USE_OPTISCALER=1", out["command"])
+        self.assertEqual([w["code"] for w in out["warnings"]], ["helixsr_fsr4"])
+
+    def test_helixsr_variables_are_reserved(self):
+        out = build(custom=[{"name": "PROTON_USE_OPTISCALER", "value": "1"}])
+        self.assertEqual([w["code"] for w in out["warnings"]], ["custom_reserved"])
 
     def test_fps_limit_is_sanitized(self):
         for value, want in (("abc", 30), (None, 30), (-5, 0), (999, 240), ("60", 60), (59.9, 59), (float("inf"), 30)):
