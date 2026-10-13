@@ -101,6 +101,28 @@ class BackendTest(unittest.TestCase):
                 self.assertFalse(backend.helixsr_download()["found"])
             self.assertEqual(run.call_args.args[0], ["bash", str(backend.HELIXSR_SCRIPT), "--yes", "--out", str(backend.HELIXSR_DIR)])
 
+    def test_helixsr_download_is_exclusive(self):
+        backend = load_backend()
+        backend.setup(FakeCtx())
+        with tempfile.TemporaryDirectory() as d:
+            backend.HELIXSR_DIR = Path(d) / "HelixSR"
+            backend.HELIXSR_SCRIPT = Path(d) / "fetch.sh"
+            backend.HELIXSR_SCRIPT.write_text("#!/bin/bash\n")
+            with mock.patch.object(backend.subprocess, "run") as run:
+                def second(*a, **k):
+                    with self.assertRaises(FakeCtx.Unavailable):
+                        backend.helixsr_download()  # a click while the first one runs
+                    return mock.Mock(returncode=0, stderr="")
+                run.side_effect = second
+                backend.helixsr_download()
+                self.assertEqual(run.call_count, 1)
+            # the lock is free again, also after a failure
+            with mock.patch.object(backend.subprocess, "run", return_value=mock.Mock(returncode=1, stderr="x")):
+                with self.assertRaises(FakeCtx.Unavailable):
+                    backend.helixsr_download()
+            with mock.patch.object(backend.subprocess, "run", return_value=mock.Mock(returncode=0, stderr="")):
+                backend.helixsr_download()
+
     def test_build_uses_home_and_ignores_garbage(self):
         backend = load_backend()
         backend.setup(FakeCtx())
