@@ -86,6 +86,37 @@ def is_added(path):
     return steam.shortcut_added(path)
 
 
+HELIXSR_DIR = Path.home() / ".local/share/invasor/user-modules/companion/HelixSR"
+HELIXSR_DLLS = ("amd_fidelityfx_dx12.dll", "amd_fidelityfx_upscaler_dx12.dll")
+# The script that downloads the DLLs into HELIXSR_DIR (it lives next to this module).
+HELIXSR_SCRIPT = Path(__file__).resolve().parent / "helixsr-download.sh"
+HELIXSR_TIMEOUT = 600
+
+
+def helixsr_status():
+    """{"found", "dir"}: found when both DLLs are in HELIXSR_DIR."""
+    found = all((HELIXSR_DIR / name).is_file() for name in HELIXSR_DLLS)
+    return {"found": found, "dir": str(HELIXSR_DIR)}
+
+
+def helixsr_download():
+    """Runs the download script, then says what is there (see helixsr_status)."""
+    if not HELIXSR_SCRIPT.is_file():
+        raise ctx.Unavailable(f"download script not found: {HELIXSR_SCRIPT}")
+    try:
+        # No shell; the script gets the destination folder as its only argument.
+        done = subprocess.run(["bash", str(HELIXSR_SCRIPT), str(HELIXSR_DIR)], stdin=subprocess.DEVNULL,
+                              capture_output=True, text=True, timeout=HELIXSR_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        raise ctx.Unavailable("the HelixSR download timed out")
+    except OSError as e:
+        raise ctx.Unavailable(f"could not run the download script: {e}")
+    if done.returncode != 0:
+        ctx.log.error("%s exited %s: %s", HELIXSR_SCRIPT, done.returncode, done.stderr.strip())
+        raise ctx.Unavailable(f"download script exited {done.returncode}: {done.stderr.strip()}")
+    return helixsr_status()
+
+
 def game_info(appid=None):
     """What Steam's files say about a game (default: the selected one), for the Game tab."""
     if appid in (None, ""):
@@ -105,4 +136,5 @@ def game_info(appid=None):
 
 
 METHODS = {"build": build, "language": language, "browse": browse, "add_to_steam": add_to_steam,
-           "is_added": is_added, "game_info": game_info}
+           "is_added": is_added, "game_info": game_info, "helixsr_status": helixsr_status,
+           "helixsr_download": helixsr_download}

@@ -33,6 +33,14 @@ const T = {
     fsr4: "FSR4 (último)",
     fsr4Hint: "Usa la última versión de GE-Proton / proton-cachyos.",
     fsr4Indicator: "Indicador de FSR 4",
+    helixsr: "HelixSR escalador",
+    helixsrHint: "Añade PROTON_USE_OPTISCALER y su configuración. Incompatible con FSR4.",
+    helixsrFound: "DLL encontradas (en %dir%)",
+    helixsrMissing: "DLL no encontradas",
+    helixsrDownload: "Descargar HelixSR",
+    helixsrDownloading: "Descargando HelixSR…",
+    helixsrDone: "HelixSR descargado",
+    helixsrFailed: "No se pudo descargar HelixSR",
     mangohud: "MangoHud",
     mangohudHint: "Con cualquier opción de MangoHud se añade el comando mangohud antes de %command%.",
     fpsLimit: "Limitar FPS",
@@ -123,6 +131,7 @@ const T = {
     w_empty_mako: "MAKO está activado pero el perfil está vacío.",
     w_empty_lsfg: "lsfg-vk está activado pero el perfil está vacío.",
     w_empty_prefix: "El prefijo está activado pero no hay carpeta elegida.",
+    w_helixsr_fsr4: "HelixSR y FSR4 son incompatibles: solo se usa HelixSR.",
     w_empty_dll: "Las DLL están activadas pero el valor está vacío.",
     w_custom_invalid: "Nombre de variable no válido: ",
     w_custom_reserved: "Nombre reservado por otra opción: ",
@@ -150,6 +159,14 @@ const T = {
     fsr4: "FSR4 (latest)",
     fsr4Hint: "Uses the latest version of GE-Proton / proton-cachyos.",
     fsr4Indicator: "FSR 4 indicator",
+    helixsr: "HelixSR upscaler",
+    helixsrHint: "Adds PROTON_USE_OPTISCALER and its config. Not compatible with FSR4.",
+    helixsrFound: "DLLs found (in %dir%)",
+    helixsrMissing: "DLLs not found",
+    helixsrDownload: "Download HelixSR",
+    helixsrDownloading: "Downloading HelixSR…",
+    helixsrDone: "HelixSR downloaded",
+    helixsrFailed: "Could not download HelixSR",
     mangohud: "MangoHud",
     mangohudHint: "With any MangoHud option, the mangohud command is added before %command%.",
     fpsLimit: "Limit FPS",
@@ -240,6 +257,7 @@ const T = {
     w_empty_mako: "MAKO is on but its profile is empty.",
     w_empty_lsfg: "lsfg-vk is on but its profile is empty.",
     w_empty_prefix: "The prefix is on but no folder is chosen.",
+    w_helixsr_fsr4: "HelixSR and FSR4 are not compatible: only HelixSR is used.",
     w_empty_dll: "DLL overrides are on but the value is empty.",
     w_custom_invalid: "Invalid variable name: ",
     w_custom_reserved: "Name reserved by another option: ",
@@ -256,6 +274,7 @@ function defaults() {
     lsfg: { on: false, profile: "default" },
     fsr4: { on: false },
     fsr4Indicator: false,
+    helixsr: { on: false },
     fpsLimit: { on: false, value: 30 },
     showInfo: false,
     wined3d: false, zink: false, hdr: false, noD3d11: false, noD3d10: false, dxvkD3d8: false,
@@ -440,6 +459,32 @@ async function launcher(el: HTMLElement, ctx: ModuleCtx, t: Strings) {
   const makoProfile = text(t.profile, () => s().mako.profile, (v) => (s().mako.profile = v));
   const lsfgProfile = text(t.profile, () => s().lsfg.profile, (v) => (s().lsfg.profile = v));
   const fsr4Indicator = toggle(t.fsr4Indicator, () => s().fsr4Indicator, (v) => (s().fsr4Indicator = v));
+  const helixsrStatus = ui.info("");
+  let helixsrFound = false;
+  async function paintHelixsr() {
+    try {
+      const st = await ctx.call<{ found: boolean; dir: string }>("helixsr_status");
+      helixsrFound = st.found;
+      helixsrStatus.textContent = st.found ? t.helixsrFound.replace("%dir%", st.dir) : t.helixsrMissing;
+    } catch {
+      helixsrFound = false;
+      helixsrStatus.textContent = t.helixsrMissing;
+    }
+    sync();
+  }
+  const helixsrDownload = ui.button({
+    label: t.helixsrDownload,
+    onClick: async () => {
+      helixsrStatus.textContent = t.helixsrDownloading;
+      try {
+        await ctx.call("helixsr_download");
+        ctx.toast(t.helixsrDone, "ok");
+      } catch {
+        ctx.toast(t.helixsrFailed, "error");
+      }
+      await paintHelixsr();
+    },
+  });
   const fpsValue = track(
     ui.number({
       label: t.fps, value: 30, min: 0, max: 240, step: 1,
@@ -454,10 +499,34 @@ async function launcher(el: HTMLElement, ctx: ModuleCtx, t: Strings) {
     dep(makoProfile, s().mako.on);
     dep(lsfgProfile, s().lsfg.on);
     dep(fsr4Indicator, s().fsr4.on);
+    dep(helixsrStatus, s().helixsr.on);
+    dep(helixsrDownload, s().helixsr.on && !helixsrFound);
     dep(fpsValue, s().fpsLimit.on);
     dep(chooseFolder, s().prefix.on);
     dep(dllValue, s().dllOverrides.on);
   }
+
+  // FSR4 and HelixSR exclude each other: picking one turns the other off.
+  const fsr4Toggle = toggle(t.fsr4, () => s().fsr4.on, (v) => {
+    s().fsr4.on = v;
+    if (!v) {
+      s().fsr4Indicator = false;
+      fsr4Indicator.set(false);
+    } else if (s().helixsr.on) {
+      s().helixsr.on = false;
+      helixsrToggle.set(false);
+    }
+  }, t.fsr4Hint);
+  const helixsrToggle = toggle(t.helixsr, () => s().helixsr.on, (v) => {
+    s().helixsr.on = v;
+    if (v) {
+      s().fsr4.on = false;
+      s().fsr4Indicator = false;
+      fsr4Toggle.set(false);
+      fsr4Indicator.set(false);
+      void paintHelixsr();
+    }
+  }, t.helixsrHint);
 
   const sections = [
     ui.section(t.frames, [
@@ -467,14 +536,12 @@ async function launcher(el: HTMLElement, ctx: ModuleCtx, t: Strings) {
       toggle(t.lsfg, () => s().lsfg.on, (v) => (s().lsfg.on = v), t.lsfgHint),
       lsfgProfile,
       ui.separator(),
-      toggle(t.fsr4, () => s().fsr4.on, (v) => {
-        s().fsr4.on = v;
-        if (!v) {
-          s().fsr4Indicator = false;
-          fsr4Indicator.set(false);
-        }
-      }, t.fsr4Hint),
+      fsr4Toggle,
       fsr4Indicator,
+      ui.separator(),
+      helixsrToggle,
+      helixsrStatus,
+      helixsrDownload,
     ], { open: false }),
     ui.section(t.mangohud, [
       toggle(t.fpsLimit, () => s().fpsLimit.on, (v) => (s().fpsLimit.on = v), t.mangohudHint),
@@ -510,6 +577,7 @@ async function launcher(el: HTMLElement, ctx: ModuleCtx, t: Strings) {
   drawCustom();
   paintPrefix();
   sync();
+  void paintHelixsr();
   el.append(preview, copy, warnings, ...sections, reset);
   await refresh();
 }

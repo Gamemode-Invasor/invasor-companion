@@ -43,7 +43,37 @@ class BackendTest(unittest.TestCase):
     def test_methods(self):
         backend = load_backend()
         backend.setup(FakeCtx())
-        self.assertEqual(set(backend.METHODS), {"build", "language", "browse", "add_to_steam", "is_added", "game_info"})
+        self.assertEqual(set(backend.METHODS), {
+            "build", "language", "browse", "add_to_steam", "is_added", "game_info", "helixsr_status",
+            "helixsr_download"})
+
+    def test_helixsr_status(self):
+        backend = load_backend()
+        backend.setup(FakeCtx())
+        with tempfile.TemporaryDirectory() as d:
+            backend.HELIXSR_DIR = Path(d) / "HelixSR"
+            self.assertFalse(backend.helixsr_status()["found"])
+            backend.HELIXSR_DIR.mkdir()
+            (backend.HELIXSR_DIR / backend.HELIXSR_DLLS[0]).write_text("x")
+            self.assertFalse(backend.helixsr_status()["found"])
+            (backend.HELIXSR_DIR / backend.HELIXSR_DLLS[1]).write_text("x")
+            self.assertEqual(backend.helixsr_status(), {"found": True, "dir": str(backend.HELIXSR_DIR)})
+
+    def test_helixsr_download(self):
+        backend = load_backend()
+        backend.setup(FakeCtx())
+        with tempfile.TemporaryDirectory() as d:
+            backend.HELIXSR_DIR = Path(d) / "HelixSR"
+            backend.HELIXSR_SCRIPT = Path(d) / "missing.sh"
+            with self.assertRaises(FakeCtx.Unavailable):
+                backend.helixsr_download()
+            backend.HELIXSR_SCRIPT.write_text("#!/bin/bash\n")
+            with mock.patch.object(backend.subprocess, "run", return_value=mock.Mock(returncode=1, stderr="no")):
+                with self.assertRaises(FakeCtx.Unavailable):
+                    backend.helixsr_download()
+            with mock.patch.object(backend.subprocess, "run", return_value=mock.Mock(returncode=0, stderr="")) as run:
+                self.assertFalse(backend.helixsr_download()["found"])
+            self.assertEqual(run.call_args.args[0], ["bash", str(backend.HELIXSR_SCRIPT), str(backend.HELIXSR_DIR)])
 
     def test_build_uses_home_and_ignores_garbage(self):
         backend = load_backend()
