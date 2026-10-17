@@ -69,8 +69,8 @@ class BuildTest(unittest.TestCase):
         self.assertEqual(
             build(helixsr={"on": True})["command"],
             "PROTON_USE_OPTISCALER=1 PROTON_OPTISCALER_CONFIG='Upscalers.Dx12Upscaler=fsr31;"
-            "Libraries.FfxDx12Path=C:\\HelixSR\\amd_fidelityfx_dx12.dll;"
-            "Libraries.FfxDx12SRPath=C:\\HelixSR\\amd_fidelityfx_upscaler_dx12.dll' %command%",
+            "Libraries.FfxDx12Path=C:\\HelixSR\\helixsr.dll;"
+            "Libraries.FfxDx12SRPath=C:\\HelixSR\\helixsr.dll' %command%",
         )
 
     def test_helixsr_excludes_fsr4(self):

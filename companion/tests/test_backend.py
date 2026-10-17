@@ -1,4 +1,6 @@
 import importlib.util
+import io
+import json
 import logging
 import subprocess
 import sys
@@ -77,7 +79,7 @@ class BackendTest(unittest.TestCase):
         backend.setup(FakeCtx())
         self.assertEqual(set(backend.METHODS), {
             "build", "language", "browse", "add_to_steam", "is_added", "game_info", "helixsr_status",
-            "helixsr_download", "helixsr_copy", "clean_scan", "clean_delete"})
+            "helixsr_check", "helixsr_download", "helixsr_copy", "clean_scan", "clean_delete"})
 
     def test_helixsr_status(self):
         backend = load_backend()
@@ -86,10 +88,13 @@ class BackendTest(unittest.TestCase):
             backend.HELIXSR_DIR = Path(d) / "HelixSR"
             self.assertFalse(backend.helixsr_status()["found"])
             backend.HELIXSR_DIR.mkdir()
-            (backend.HELIXSR_DIR / backend.HELIXSR_DLLS[0]).write_text("x")
+            (backend.HELIXSR_DIR / "helixsr.ini").write_text("x")
             self.assertFalse(backend.helixsr_status()["found"])
-            (backend.HELIXSR_DIR / backend.HELIXSR_DLLS[1]).write_text("x")
-            self.assertEqual(backend.helixsr_status(), {"found": True, "dir": str(backend.HELIXSR_DIR), "game": None})
+            (backend.HELIXSR_DIR / backend.HELIXSR_DLL).write_text("x")
+            self.assertEqual(backend.helixsr_status(),
+                             {"found": True, "dir": str(backend.HELIXSR_DIR), "version": None, "game": None})
+            (backend.HELIXSR_DIR / ".version").write_text("v1.9.3\n")
+            self.assertEqual(backend.helixsr_status()["version"], "v1.9.3")
 
     def test_helixsr_copy(self):
         backend = load_backend()
@@ -98,24 +103,133 @@ class BackendTest(unittest.TestCase):
             lib = Path(d) / "lib"
             backend.HELIXSR_DIR = Path(d) / "HelixSR"
             backend.HELIXSR_DIR.mkdir()
-            for name in backend.HELIXSR_DLLS:
+            for name in ("helixsr.dll", "helixsr.ini"):
                 (backend.HELIXSR_DIR / name).write_text("new")
+            (backend.HELIXSR_DIR / ".version").write_text("v1.9.3\n")
             dest = lib / "compatdata" / "42" / "pfx" / "drive_c" / "HelixSR"
             with mock.patch.object(backend.steam, "libraries", return_value=[lib]):
                 self.assertIsNone(backend.helixsr_status()["game"])
-                self.assertEqual(backend.helixsr_status("42")["game"], {"prefix": False, "copy": False})
+                self.assertEqual(backend.helixsr_status("42")["game"], {"prefix": False, "copy": False, "version": None})
                 with self.assertRaises(FakeCtx.Unavailable):
                     backend.helixsr_copy("42")
                 with self.assertRaises(FakeCtx.InvalidArgument):
                     backend.helixsr_status("../x")
                 dest.parent.mkdir(parents=True)
-                self.assertEqual(backend.helixsr_status("42")["game"], {"prefix": True, "copy": True})
-                self.assertEqual(backend.helixsr_copy("42")["game"], {"prefix": True, "copy": False})
-                self.assertEqual((dest / backend.HELIXSR_DLLS[0]).read_text(), "new")
-                (dest / backend.HELIXSR_DLLS[1]).write_text("old")
+                self.assertEqual(backend.helixsr_status("42")["game"], {"prefix": True, "copy": True, "version": None})
+                self.assertEqual(backend.helixsr_copy("42")["game"], {"prefix": True, "copy": False, "version": "v1.9.3"})
+                for name in ("helixsr.dll", "helixsr.ini"):
+                    self.assertEqual((dest / name).read_text(), "new")
+                self.assertEqual((dest / ".version").read_text(), "v1.9.3\n")
+                self.assertFalse(list(dest.glob("*.new")))
+                (dest / ".version").write_text("v1.9.2\n")  # older: proposed again
                 self.assertTrue(backend.helixsr_status("42")["game"]["copy"])
                 backend.helixsr_copy("42")
-                self.assertEqual((dest / backend.HELIXSR_DLLS[1]).read_text(), "new")
+                self.assertFalse(backend.helixsr_status("42")["game"]["copy"])
+                (dest / ".version").write_text("v1.10.0\n")  # newer than ours: left alone
+                self.assertFalse(backend.helixsr_status("42")["game"]["copy"])
+                (dest / ".version").unlink()  # no version: proposed
+                self.assertTrue(backend.helixsr_status("42")["game"]["copy"])
+                backend.helixsr_copy("42")
+                (dest / "amd_fidelityfx_dx12.dll").write_text("legacy")  # left by an earlier version
+                self.assertTrue(backend.helixsr_status("42")["game"]["copy"])
+                backend.helixsr_copy("42")
+                self.assertFalse((dest / "amd_fidelityfx_dx12.dll").exists())
+
+    def test_helixsr_game_needs_copy(self):
+        backend = load_backend()
+        backend.setup(FakeCtx())
+        with tempfile.TemporaryDirectory() as d:
+            backend.HELIXSR_DIR = Path(d) / "HelixSR"
+            dest = Path(d) / "game"
+            backend.HELIXSR_DIR.mkdir()
+            dest.mkdir()
+            self.assertTrue(backend._game_needs_copy(dest, "v1"))  # no DLL
+            (dest / "helixsr.dll").write_text("a")
+            (backend.HELIXSR_DIR / "helixsr.dll").write_text("a")
+            self.assertFalse(backend._game_needs_copy(dest, None))  # no versions anywhere: the DLLs are the same
+            (backend.HELIXSR_DIR / "helixsr.dll").write_text("b")
+            self.assertTrue(backend._game_needs_copy(dest, None))  # ... and now they differ
+            self.assertTrue(backend._game_needs_copy(dest, "v1.9.3"))  # the game has no .version
+            (dest / ".version").write_text("v1.9.3")
+            self.assertFalse(backend._game_needs_copy(dest, "v1.9.3"))
+            (dest / ".version").write_text("v1.9.9")
+            self.assertTrue(backend._game_needs_copy(dest, "v1.10.0"))  # by numbers, not as text
+
+    def test_helixsr_copy_merges_the_game_ini(self):
+        backend = load_backend()
+        backend.setup(FakeCtx())
+        with tempfile.TemporaryDirectory() as d:
+            lib = Path(d) / "lib"
+            backend.HELIXSR_DIR = Path(d) / "HelixSR"
+            backend.HELIXSR_DIR.mkdir()
+            (backend.HELIXSR_DIR / "helixsr.dll").write_text("dll")
+            (backend.HELIXSR_DIR / "helixsr.ini").write_bytes(
+                b"[Sharpening]\r\n; mode\r\nSharpener = off\r\n; new\r\nStrength = 2\r\n")
+            dest = lib / "compatdata" / "42" / "pfx" / "drive_c" / "HelixSR"
+            dest.mkdir(parents=True)
+            (dest / "helixsr.ini").write_bytes(b"[sharpening]\r\nsharpener=rcas\r\nGone = 1\r\n")
+            with mock.patch.object(backend.steam, "libraries", return_value=[lib]):
+                backend.helixsr_copy("42")
+            self.assertEqual((dest / "helixsr.ini").read_bytes(),
+                             b"[Sharpening]\r\n; mode\r\nSharpener = rcas\r\n; new\r\nStrength = 2\r\n")
+
+    @staticmethod
+    def release(tag):
+        resp = mock.MagicMock()
+        resp.__enter__.return_value = io.BytesIO(json.dumps({"tag_name": tag}).encode())
+        return resp
+
+    def test_helixsr_latest_is_cached_and_tolerant(self):
+        backend = load_backend()
+        backend.setup(FakeCtx())
+        with mock.patch.object(backend.urllib.request, "urlopen", side_effect=OSError("offline")) as urlopen:
+            self.assertIsNone(backend._helixsr_latest())
+            self.assertIsNone(backend._helixsr_latest())  # a failure is retried later, not on every call
+            self.assertEqual(urlopen.call_count, 1)
+        backend._helixsr_latest_cache.update(at=0.0, ttl=0, tag=None)
+        with mock.patch.object(backend.urllib.request, "urlopen", return_value=self.release("v1.9.3")) as urlopen:
+            self.assertEqual(backend._helixsr_latest(), "v1.9.3")
+            self.assertEqual(backend._helixsr_latest(), "v1.9.3")
+            self.assertEqual(urlopen.call_count, 1)
+        backend._helixsr_latest_cache.update(at=0.0, ttl=0, tag=None)
+        bad = mock.MagicMock()
+        bad.__enter__.return_value = io.BytesIO(b"not json")
+        with mock.patch.object(backend.urllib.request, "urlopen", return_value=bad):
+            self.assertIsNone(backend._helixsr_latest())
+
+    def test_helixsr_check(self):
+        backend = load_backend()
+        backend.setup(FakeCtx())
+        with tempfile.TemporaryDirectory() as d:
+            backend.HELIXSR_DIR = Path(d) / "HelixSR"
+            check = lambda latest: (setattr(backend, "_helixsr_latest", lambda: latest), backend.helixsr_check())[1]
+            self.assertFalse(check("v1.9.3")["update"])  # nothing installed: the download button, not an update
+            backend.HELIXSR_DIR.mkdir()
+            (backend.HELIXSR_DIR / backend.HELIXSR_DLL).write_text("x")
+            self.assertFalse(check("v1.9.3")["update"])  # no .version: nothing to compare
+            (backend.HELIXSR_DIR / ".version").write_text("v1.9.2\n")
+            out = check("v1.9.3")
+            self.assertEqual((out["update"], out["latest"], out["version"]), (True, "v1.9.3", "v1.9.2"))
+            self.assertTrue(check("v1.10.0")["update"])  # numbers, not strings
+            self.assertFalse(check("v1.9.2")["update"])
+            self.assertFalse(check("v1.9.1")["update"])
+            self.assertFalse(check(None)["update"])  # offline
+            self.assertFalse(check("nightly")["update"])
+
+    def test_helixsr_failed_update_keeps_the_previous_build(self):
+        with tempfile.TemporaryDirectory() as d:
+            backend = self.helixsr_backend(d)
+            backend.HELIXSR_DIR.mkdir()
+            (backend.HELIXSR_DIR / backend.HELIXSR_DLL).write_text("old")
+            (backend.HELIXSR_DIR / ".version").write_text("v1.9.2\n")
+            backend.HELIXSR_SCRIPT.write_text("#!/bin/bash\n")
+            proc = self.fake_proc(["[helixsr-fetch] error: build failed\n"], code=1)
+            with mock.patch.object(backend.subprocess, "Popen", return_value=proc):
+                with self.assertRaises(FakeCtx.Unavailable):
+                    backend.helixsr_download()
+            status = backend.helixsr_status()
+            self.assertEqual((status["found"], status["version"]), (True, "v1.9.2"))
+            self.assertEqual((backend.HELIXSR_DIR / backend.HELIXSR_DLL).read_text(), "old")
 
     @staticmethod
     def fake_proc(lines, code=0):
