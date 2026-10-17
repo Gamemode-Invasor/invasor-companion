@@ -19,8 +19,8 @@ RESERVED = frozenset({
 # HelixSR runs through OptiScaler; its DLLs live in C:\HelixSR inside the prefix.
 HELIXSR_CONFIG = (
     "Upscalers.Dx12Upscaler=fsr31;"
-    "Libraries.FfxDx12Path=C:\\HelixSR\\amd_fidelityfx_dx12.dll;"
-    "Libraries.FfxDx12SRPath=C:\\HelixSR\\amd_fidelityfx_upscaler_dx12.dll"
+    "Libraries.FfxDx12Path=C:\\HelixSR\\helixsr.dll;"
+    "Libraries.FfxDx12SRPath=C:\\HelixSR\\helixsr.dll"
 )
 
 # Boolean options: state key -> what it adds.

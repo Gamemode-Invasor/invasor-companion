@@ -35,15 +35,20 @@ const T = {
     fsr4Indicator: "Indicador de FSR 4",
     helixsr: "Escalador HelixSR",
     helixsrHint: "Añade PROTON_USE_OPTISCALER y su configuración. Incompatible con FSR4.",
-    helixsrFound: "DLL encontradas (en %dir%)",
-    helixsrMissing: "DLL no encontradas",
+    helixsrFound: "DLL encontrada (en %dir%)",
+    helixsrFoundVersion: "DLL encontrada: %v% (en %dir%)",
+    helixsrMissing: "DLL no encontrada",
     helixsrDownload: "Descargar y generar DLL",
-    helixsrCopy: "Copiar DLL al juego",
-    helixsrCopied: "DLL copiadas al juego",
-    helixsrCopyFailed: "No se pudieron copiar las DLL",
+    helixsrUpdate: "Actualizar HelixSR (%from% → %to%)",
+    helixsrCopy: "Copiar HelixSR al juego",
+    helixsrCopyVersion: "Copiar HelixSR al juego (%from% → %to%)",
+    helixsrNoVersion: "sin versión",
+    helixsrCopied: "HelixSR copiado al juego",
+    helixsrCopyFailed: "No se pudo copiar HelixSR al juego",
     helixsrDownloading: "Descargando HelixSR…",
     helixsrDone: "HelixSR descargado",
     helixsrFailed: "No se pudo descargar HelixSR",
+    helixsrUpdateFailed: "No se pudo actualizar HelixSR: se conserva la versión anterior",
     cleaning: "Limpieza",
     cleanScan: "Buscar archivos sobrantes",
     cleanPrefixes: "Prefijos y shaders de juegos que ya no están",
@@ -176,15 +181,20 @@ const T = {
     fsr4Indicator: "FSR 4 indicator",
     helixsr: "HelixSR upscaler",
     helixsrHint: "Adds PROTON_USE_OPTISCALER and its config. Not compatible with FSR4.",
-    helixsrFound: "DLLs found (in %dir%)",
-    helixsrMissing: "DLLs not found",
-    helixsrDownload: "Download and generate DLLs",
-    helixsrCopy: "Copy DLLs to the game",
-    helixsrCopied: "DLLs copied to the game",
-    helixsrCopyFailed: "Could not copy the DLLs",
+    helixsrFound: "DLL found (in %dir%)",
+    helixsrFoundVersion: "DLL found: %v% (in %dir%)",
+    helixsrMissing: "DLL not found",
+    helixsrDownload: "Download and generate DLL",
+    helixsrUpdate: "Update HelixSR (%from% → %to%)",
+    helixsrCopy: "Copy HelixSR to the game",
+    helixsrCopyVersion: "Copy HelixSR to the game (%from% → %to%)",
+    helixsrNoVersion: "no version",
+    helixsrCopied: "HelixSR copied to the game",
+    helixsrCopyFailed: "Could not copy HelixSR to the game",
     helixsrDownloading: "Downloading HelixSR…",
     helixsrDone: "HelixSR downloaded",
     helixsrFailed: "Could not download HelixSR",
+    helixsrUpdateFailed: "Could not update HelixSR: the previous version is kept",
     cleaning: "Cleaning",
     cleanScan: "Look for leftover files",
     cleanPrefixes: "Prefixes and shaders of games that are gone",
@@ -493,21 +503,43 @@ async function launcher(el: HTMLElement, ctx: ModuleCtx, t: Strings) {
   let helixsrFound = false;
   let helixsrCopyNeeded = false;
   let helixsrBusy = false;
+  let helixsrUpdate: { from: string; to: string } | null = null; // set when the latest stable is newer
+  type HelixsrStatus = { found: boolean; dir: string; version: string | null; game: { copy: boolean; version: string | null } | null };
+  function showHelixsr(st: HelixsrStatus) {
+    helixsrFound = st.found;
+    helixsrCopyNeeded = !!st.game?.copy;
+    helixsrCopy.textContent = st.version
+      ? t.helixsrCopyVersion.replace("%from%", st.game?.version ?? t.helixsrNoVersion).replace("%to%", st.version)
+      : t.helixsrCopy;
+    helixsrStatus.textContent = !st.found
+      ? t.helixsrMissing
+      : st.version
+        ? t.helixsrFoundVersion.replace("%v%", st.version).replace("%dir%", st.dir)
+        : t.helixsrFound.replace("%dir%", st.dir);
+  }
   async function paintHelixsr() {
     if (helixsrBusy) return; // the download repaints when it ends
     const appid = currentGame(ctx.game())?.game.appid ?? "";
     try {
-      const st = await ctx.call<{ found: boolean; dir: string; game: { copy: boolean } | null }>(
-        "helixsr_status",
+      showHelixsr(await ctx.call<HelixsrStatus>("helixsr_status", appid ? { appid } : {}));
+    } catch {
+      showHelixsr({ found: false, dir: "", version: null, game: null });
+    }
+    sync();
+    // The latest stable asks GitHub: after the local state is on screen, and an offline Deck just keeps it.
+    try {
+      const st = await ctx.call<HelixsrStatus & { latest: string | null; update: boolean }>(
+        "helixsr_check",
         appid ? { appid } : {},
       );
-      helixsrFound = st.found;
-      helixsrCopyNeeded = !!st.game?.copy;
-      helixsrStatus.textContent = st.found ? t.helixsrFound.replace("%dir%", st.dir) : t.helixsrMissing;
+      if (helixsrBusy) return;
+      showHelixsr(st);
+      helixsrUpdate = st.update && st.version && st.latest ? { from: st.version, to: st.latest } : null;
+      helixsrDownload.textContent = helixsrUpdate
+        ? t.helixsrUpdate.replace("%from%", helixsrUpdate.from).replace("%to%", helixsrUpdate.to)
+        : t.helixsrDownload;
     } catch {
-      helixsrFound = false;
-      helixsrCopyNeeded = false;
-      helixsrStatus.textContent = t.helixsrMissing;
+      helixsrUpdate = null;
     }
     sync();
   }
@@ -525,7 +557,7 @@ async function launcher(el: HTMLElement, ctx: ModuleCtx, t: Strings) {
         await ctx.call("helixsr_download");
         ctx.toast(t.helixsrDone, "ok");
       } catch {
-        ctx.toast(t.helixsrFailed, "error");
+        ctx.toast(helixsrFound ? t.helixsrUpdateFailed : t.helixsrFailed, "error");
       } finally {
         helixsrBusy = false;
       }
@@ -561,7 +593,7 @@ async function launcher(el: HTMLElement, ctx: ModuleCtx, t: Strings) {
     dep(lsfgProfile, s().lsfg.on);
     dep(fsr4Indicator, s().fsr4.on);
     dep(helixsrStatus, s().helixsr.on);
-    dep(helixsrDownload, s().helixsr.on && !helixsrFound && !helixsrBusy);
+    dep(helixsrDownload, s().helixsr.on && (!helixsrFound || !!helixsrUpdate) && !helixsrBusy);
     dep(helixsrCopy, s().helixsr.on && helixsrFound && helixsrCopyNeeded);
     dep(fpsValue, s().fpsLimit.on);
     dep(chooseFolder, s().prefix.on);
