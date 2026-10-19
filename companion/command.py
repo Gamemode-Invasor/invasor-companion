@@ -20,7 +20,7 @@ RESERVED = frozenset({
 HELIXSR_CONFIG = (
     "Upscalers.Dx12Upscaler=fsr31;"
     "Libraries.FfxDx12Path=C:\\HelixSR\\helixsr.dll;"
-    "Libraries.FfxDx12SRPath=C:\\HelixSR\\helixsr.dll"
+    "Libraries.FfxDx12SRPath=C:\\HelixSR\\helixsr_upscaler.dll"
 )
 
 # Boolean options: state key -> what it adds.
