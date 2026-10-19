@@ -15,7 +15,8 @@
 #   .version        etiqueta de la versión instalada
 # Todo se construye y se valida en un temporal antes de tocar el destino: si algo falla, lo que hubiera
 # en el destino queda como estaba. El temporal (zip, Python portable, compilador de shaders, prefijo de
-# Wine) se borra siempre. El script oficial de HelixSR se ejecuta sin modificar.
+# Wine) se borra siempre. helixsr-setup.sh corre sin modificar y su paso de juegos se anula en el
+# temporal: solo se genera la DLL, no se instala nada en ningún juego.
 # Necesita: bash, curl, unzip, Python 3 con numpy (o el setup descarga uno portable) y Proton/Wine.
 #
 # AVISO: la red procede de la DLL de DLSS de NVIDIA (su licencia). Las DLL generadas son para tu
@@ -33,7 +34,7 @@ INI_NAME="helixsr.ini"
 
 say() { printf '[helixsr-fetch] %s\n' "$*"; }
 die() { printf '[helixsr-fetch] error: %s\n' "$*" >&2; exit 1; }
-usage() { sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; }
 
 # --- argumentos ---
 while [ $# -gt 0 ]; do
@@ -100,16 +101,64 @@ SETUP=$(find "$T/pkg" -name helixsr-setup.sh | head -n1)
 [ -n "$SETUP" ] || die "este release no trae helixsr-setup.sh"
 PKG=$(dirname "$SETUP")
 
-# --- compilar con el setup oficial, sin modificarlo ---
-# --yes acepta sus descargas (ya consentidas arriba). La entrada vacía hace que su pregunta final por cada
-# juego reciba EOF y no instale nada en ninguno. Los XDG_* llevan Python/DXC/prefijo y cachés al temporal
-# (HOME no se toca: Proton se busca en ~/.local/share/Steam).
+# --- aislamiento del paso de juegos: aquí solo se genera la DLL ---
+# HelixSR v2.0.0 (2026-10-19) hace que helixsr-setup.sh reenvíe --yes a su paso de juegos
+# (setup/helixsr_install.py): con eso instala HelixSR en TODOS los juegos que encuentre (en
+# v1.9.3 --yes no llegaba allí y el EOF de </dev/null detenía el paso sin tocar nada).
+# Doble barrera; si no se puede montar ninguna, el script muere sin llegar al setup:
+#   A) setup/helixsr_install.py del zip temporal -> no-op (el paso de juegos ni se ejecuta);
+#   B) HOME temporal sin bibliotecas de Steam (el escaneo usa Path.home()): el escaneo no ve
+#      ningún juego; solo se enlaza ahí la herramienta de Proton/Wine real, que el build
+#      necesita para el compilador de shaders (compatibilitytools.d no es biblioteca).
+A_OK=0
+B_OK=0
+SETUP_HOME="$HOME"
+INSTALLER="$PKG/setup/helixsr_install.py"
+if [ -f "$INSTALLER" ]; then
+    cat > "$INSTALLER" <<'PY'
+#!/usr/bin/env python3
+import sys
+print("[helixsr-setup] games step skipped (helixsr-fetch: only the DLL is built)", flush=True)
+sys.exit(0)
+PY
+    A_OK=1
+    say "paso de juegos anulado (esta descarga solo genera la DLL)"
+else
+    say "aviso: este release no trae setup/helixsr_install.py (¿cambió HelixSR?): hace falta el HOME temporal"
+fi
+for p in "$HOME"/.local/share/Steam/steamapps/common/Proton*/files/bin/wine \
+         "$HOME"/.steam/steam/steamapps/common/Proton*/files/bin/wine \
+         "$HOME"/.local/share/Steam/compatibilitytools.d/*/files/bin/wine \
+         "$HOME"/.steam/root/compatibilitytools.d/*/files/bin/wine; do
+    if [ -x "$p" ]; then
+        TOOL=${p%/files/bin/wine}
+        mkdir -p "$T/home/.local/share/Steam/compatibilitytools.d"
+        ln -sfn "$TOOL" "$T/home/.local/share/Steam/compatibilitytools.d/$(basename "$TOOL")"
+        SETUP_HOME="$T/home"
+        B_OK=1
+        say "HOME temporal para el setup (juegos invisibles; Proton/Wine enlazado: $(basename "$TOOL"))"
+        break
+    fi
+done
+if [ "$B_OK" = 0 ]; then
+    say "aviso: no encontré Proton/Wine para el HOME temporal: el setup corre con el HOME real"
+fi
+if [ "$A_OK" = 0 ] && [ "$B_OK" = 0 ]; then
+    die "no se puede anular ni aislar el paso de juegos: revisa helixsr-fetch.sh contra este release"
+fi
+
+# --- compilar con el setup oficial ---
+# --yes acepta sus descargas (ya consentidas arriba); desde HelixSR v2.0.0 reenvía además --yes
+# al paso de juegos, que así instalaría en todos (por eso el no-op de setup/helixsr_install.py
+# y el HOME temporal del bloque anterior). Los XDG_* llevan Python/DXC/prefijo y cachés al
+# temporal; el HOME es el temporal cuando hubo herramienta que enlazar, y si no el real (sigue
+# protegido el no-op).
 say "compilando HelixSR (puede tardar unos minutos)..."
 LOG="$T/build.log"
 set +e
-( cd "$PKG" && XDG_DATA_HOME="$T/data" XDG_CACHE_HOME="$T/cache" XDG_CONFIG_HOME="$T/config" \
+( cd "$PKG" && HOME="$SETUP_HOME" XDG_DATA_HOME="$T/data" XDG_CACHE_HOME="$T/cache" XDG_CONFIG_HOME="$T/config" \
     bash ./helixsr-setup.sh --yes </dev/null ) 2>&1 \
-    | tee "$LOG" | sed -u '/looking for games/,$d'
+    | tee "$LOG"
 set -e
 
 # --- localizar el resultado (tolerante a cambios de carpetas del autor) ---

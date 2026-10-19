@@ -100,6 +100,7 @@ HELIXSR_DIR = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")
 HELIXSR_DLL = "helixsr.dll"
 HELIXSR_INI = "helixsr.ini"
 HELIXSR_FILES = (HELIXSR_DLL, HELIXSR_INI, ".version")  # what goes into a game's prefix (the version last)
+HELIXSR_LINK = "helixsr_upscaler.dll"  # in the game's prefix, a symlink to HELIXSR_DLL
 HELIXSR_OLD_NAMES = ("amd_fidelityfx_dx12.dll", "amd_fidelityfx_upscaler_dx12.dll")  # earlier versions of the module
 # The script that fetches and builds the DLLs into HELIXSR_DIR (shipped in the module's bin/).
 HELIXSR_SCRIPT = Path(__file__).resolve().parent / "bin" / "helixsr-fetch.sh"
@@ -146,14 +147,32 @@ def _older(version, than):
 
 
 def _game_needs_copy(dest, installed):
-    """Should HelixSR be copied into dest? When it has no DLL, leftovers of earlier versions, no .version or an older
-    one than the installed. Without an installed .version (a build by hand) the DLLs are compared instead."""
-    if not (dest / HELIXSR_DLL).is_file() or any((dest / name).exists() for name in HELIXSR_OLD_NAMES):
+    """Should HelixSR be copied into dest? When it has no DLL or no HELIXSR_LINK to it, leftovers of earlier versions,
+    no .version or an older one than the installed. Without an installed .version (a build by hand) the DLLs are
+    compared instead."""
+    if not (dest / HELIXSR_DLL).is_file() or not _has_link(dest) \
+            or any((dest / name).exists() for name in HELIXSR_OLD_NAMES):
         return True
     if installed:
         have = _read_version(dest)
         return have is None or _older(have, installed)
     return not filecmp.cmp(HELIXSR_DIR / HELIXSR_DLL, dest / HELIXSR_DLL, shallow=False)
+
+
+def _has_link(dest):
+    """Is HELIXSR_LINK in dest a symlink to HELIXSR_DLL?"""
+    link = dest / HELIXSR_LINK
+    return link.is_symlink() and os.readlink(link) == HELIXSR_DLL
+
+
+def _make_link(dest):
+    """Points HELIXSR_LINK in dest at HELIXSR_DLL (relative, so it also works inside Wine)."""
+    if _has_link(dest):
+        return
+    tmp = dest / (HELIXSR_LINK + ".new")
+    tmp.unlink(missing_ok=True)
+    tmp.symlink_to(HELIXSR_DLL)
+    os.replace(tmp, dest / HELIXSR_LINK)
 
 
 def _merge_ini(mine, new):
@@ -250,7 +269,7 @@ def helixsr_check(appid=None):
 
 
 def helixsr_copy(appid):
-    """Copies HELIXSR_FILES into the game's prefix (C:\\HelixSR); returns helixsr_status(appid)."""
+    """Copies HELIXSR_FILES into the game's prefix (C:\\HelixSR) plus HELIXSR_LINK; returns helixsr_status(appid)."""
     appid = _appid(appid)
     if not appid:
         raise ctx.InvalidArgument("no game")
@@ -264,6 +283,8 @@ def helixsr_copy(appid):
         for name in HELIXSR_OLD_NAMES:  # no leftovers of earlier versions
             (dest / name).unlink(missing_ok=True)
         for name in HELIXSR_FILES:  # the DLL first and the version last: a cut copy is proposed again
+            if name == ".version":
+                _make_link(dest)
             src = HELIXSR_DIR / name
             if not src.is_file():
                 continue

@@ -120,7 +120,12 @@ class BackendTest(unittest.TestCase):
                 for name in ("helixsr.dll", "helixsr.ini"):
                     self.assertEqual((dest / name).read_text(), "new")
                 self.assertEqual((dest / ".version").read_text(), "v1.9.3\n")
+                self.assertEqual((dest / "helixsr_upscaler.dll").readlink(), Path("helixsr.dll"))
                 self.assertFalse(list(dest.glob("*.new")))
+                (dest / "helixsr_upscaler.dll").unlink()  # no link: proposed again
+                self.assertTrue(backend.helixsr_status("42")["game"]["copy"])
+                backend.helixsr_copy("42")
+                self.assertTrue((dest / "helixsr_upscaler.dll").is_symlink())
                 (dest / ".version").write_text("v1.9.2\n")  # older: proposed again
                 self.assertTrue(backend.helixsr_status("42")["game"]["copy"])
                 backend.helixsr_copy("42")
@@ -146,6 +151,8 @@ class BackendTest(unittest.TestCase):
             self.assertTrue(backend._game_needs_copy(dest, "v1"))  # no DLL
             (dest / "helixsr.dll").write_text("a")
             (backend.HELIXSR_DIR / "helixsr.dll").write_text("a")
+            self.assertTrue(backend._game_needs_copy(dest, None))  # no helixsr_upscaler.dll link
+            (dest / "helixsr_upscaler.dll").symlink_to("helixsr.dll")
             self.assertFalse(backend._game_needs_copy(dest, None))  # no versions anywhere: the DLLs are the same
             (backend.HELIXSR_DIR / "helixsr.dll").write_text("b")
             self.assertTrue(backend._game_needs_copy(dest, None))  # ... and now they differ
