@@ -13,7 +13,7 @@ RESERVED = frozenset({
     "PROTON_USE_WINED3D", "MESA_LOADER_DRIVER_OVERRIDE", "STEAM_COMPAT_DATA_PATH", "WINEDLLOVERRIDES",
     "FSR4_UPGRADE", "PROTON_FSR4_UPGRADE", "PROTON_FSR4_INDICATOR", "DXVK_HDR", "PROTON_ENABLE_HDR",
     "PROTON_NO_D3D11", "PROTON_NO_D3D10", "PROTON_DXVK_D3D8", "PROTON_NO_ESYNC", "PROTON_NO_FSYNC",
-    "PROTON_FORCE_LARGE_ADDRESS_AWARE", "SteamDeck", "PROTON_USE_OPTISCALER", "PROTON_OPTISCALER_CONFIG",
+    "PROTON_FORCE_LARGE_ADDRESS_AWARE", "PROTON_LOG", "SteamDeck", "PROTON_USE_OPTISCALER", "PROTON_OPTISCALER_CONFIG",
 })
 
 # HelixSR runs through OptiScaler; its DLLs live in C:\HelixSR inside the prefix.
@@ -92,6 +92,9 @@ def build(state, home="~"):
     empty_lsfg, empty_prefix, empty_dll, mako_lsfg, helixsr_fsr4, custom_invalid / custom_reserved / custom_duplicate (name).
     """
     variables, warnings = [], []
+    # PROTON_LOG=1 goes first of all: Proton writes ~/steam-<appid>.log.
+    if state.get("protonLog"):
+        variables.append("PROTON_LOG=1")
     mako, lsfg, fsr4 = _section(state, "mako"), _section(state, "lsfg"), _section(state, "fsr4")
     helixsr = _section(state, "helixsr")
     prefix, dll = _section(state, "prefix"), _section(state, "dllOverrides")

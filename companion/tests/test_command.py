@@ -34,6 +34,11 @@ class BuildTest(unittest.TestCase):
         out = build(wow64=True, wined3d=True, steamDeck=True)["command"]
         self.assertEqual(out, "PROTON_USE_WINED3D=1 PROTON_USE_WOW64=1 SteamDeck=0 %command%")
 
+    def test_proton_log_goes_first(self):
+        self.assertEqual(build(protonLog=True)["command"], "PROTON_LOG=1 %command%")
+        out = build(protonLog=True, mako={"on": True, "profile": "default"}, wow64=True)["command"]
+        self.assertTrue(out.startswith("PROTON_LOG=1 MAKO_PROFILE="))
+
     def test_mako_adds_wrapper(self):
         out = build(mako={"on": True, "profile": "default"})["command"]
         self.assertEqual(out, 'MAKO_PROFILE="default" /home/u/.local/bin/mako-launch %command%')
