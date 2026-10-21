@@ -105,7 +105,8 @@ class BackendTest(unittest.TestCase):
         (backend.HELIXSR_DIR / "OptiScaler" / "D3D12_OptiScaler").mkdir(parents=True)
         (backend.HELIXSR_DIR / "Licenses").mkdir()
         for name in ("helixsr.dll", "helixsr.ini", "OptiScaler.dll", "OptiScaler.ini", "README.txt",
-                     "OptiScaler/libxess.dll", "OptiScaler/D3D12_OptiScaler/D3D12Core.dll", "Licenses/a.txt"):
+                     "OptiScaler/libxess.dll", "OptiScaler/D3D12_OptiScaler/D3D12Core.dll", "Licenses/a.txt",
+                     *("OptiScaler/" + n for n in backend.HELIXSR_NVNGX)):
             (backend.HELIXSR_DIR / name).write_text("new")
         if version:
             (backend.HELIXSR_DIR / ".version").write_text(version + "\n")
@@ -129,7 +130,8 @@ class BackendTest(unittest.TestCase):
                 self.assertEqual(backend.helixsr_status("42")["game"], {"prefix": True, "copy": True, "version": None})
                 self.assertEqual(backend.helixsr_copy("42")["game"], {"prefix": True, "copy": False, "version": "v1.9.3"})
                 for name in ("helixsr.dll", "helixsr.ini", "OptiScaler.dll", "OptiScaler.ini", "README.txt",
-                             "OptiScaler/libxess.dll", "OptiScaler/D3D12_OptiScaler/D3D12Core.dll", "Licenses/a.txt"):
+                             "OptiScaler/libxess.dll", "OptiScaler/D3D12_OptiScaler/D3D12Core.dll", "Licenses/a.txt",
+                             *("OptiScaler/" + n for n in backend.HELIXSR_NVNGX)):
                     self.assertEqual((dest / name).read_text(), "new", name)
                 self.assertEqual((dest / ".version").read_text(), "v1.9.3\n")
                 for name in ("dxgi.dll", "d3d12.dll"):
@@ -141,6 +143,16 @@ class BackendTest(unittest.TestCase):
                 self.assertTrue((dest / "dxgi.dll").is_symlink())
                 (dest / "OptiScaler.dll").unlink()  # no HelixSR Scaler: proposed again
                 self.assertTrue(backend.helixsr_status("42")["game"]["copy"])
+                backend.helixsr_copy("42")
+                (dest / "OptiScaler" / "nvngx_dlss.dll").unlink()  # same version, no DLSS DLL: proposed again
+                self.assertTrue(backend.helixsr_status("42")["game"]["copy"])
+                backend.helixsr_copy("42")
+                self.assertTrue((dest / "OptiScaler" / "nvngx_dlss.dll").is_file())
+                self.assertFalse(backend.helixsr_status("42")["game"]["copy"])
+                (backend.HELIXSR_DIR / "OptiScaler" / "nvngx_dlss.dll").unlink()  # ours has none: nothing to offer
+                (dest / "OptiScaler" / "nvngx_dlss.dll").unlink()
+                self.assertFalse(backend.helixsr_status("42")["game"]["copy"])
+                (backend.HELIXSR_DIR / "OptiScaler" / "nvngx_dlss.dll").write_text("new")
                 backend.helixsr_copy("42")
                 (dest / ".version").write_text("v1.9.2\n")  # older: proposed again
                 self.assertTrue(backend.helixsr_status("42")["game"]["copy"])

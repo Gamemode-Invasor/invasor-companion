@@ -14,6 +14,8 @@
 #   helixsr.dll         HelixSR con la red incrustada
 #   helixsr.ini         ajustes de HelixSR
 #   OptiScaler.dll      HelixSR Scaler, con OptiScaler/ (sus DLL de AMD y XeSS), Licenses/ y sus README
+#   OptiScaler/nvngx_dlss*.dll   las DLL de DLSS 310.7.0 de NVIDIA: HelixSR Scaler las busca junto a su DLL para
+#                       que el juego vea DLSS (sin ellas apaga el spoofing); se descargan si faltan
 #   OptiScaler.ini      el del release, ajustado para umu (HelixSR en FfxDx12SRPath)
 #   .version            etiqueta de la versión instalada
 # Al actualizar, los dos ini conservan tus valores y reciben las opciones nuevas.
@@ -33,6 +35,8 @@ OUT="${XDG_DATA_HOME:-$HOME/.local/share}/HelixSR"
 FORCE=0
 ASSUME_YES=0
 DLSS_LICENSE="https://github.com/NVIDIA/DLSS/blob/v310.7.0/LICENSE.txt"
+NVNGX_URL="https://github.com/NVIDIA/DLSS/raw/v310.7.0/lib/Windows_x86_64/rel"
+NVNGX_FILES=(nvngx_dlss.dll nvngx_dlssd.dll nvngx_dlssg.dll)
 DLL_NAME="helixsr.dll"
 INI_NAME="helixsr.ini"
 OPTI_DLL="OptiScaler.dll"
@@ -41,7 +45,34 @@ STAGING=""
 
 say() { printf '[helixsr-fetch] %s\n' "$*"; }
 die() { printf '[helixsr-fetch] error: %s\n' "$*" >&2; exit 1; }
-usage() { sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'; }
+
+# ensure_nvngx CARPETA: deja en CARPETA (la OptiScaler/ de un destino o de su temporal) las nvngx_dlss*.dll que
+# falten: primero las que ya hay en $OUT/OptiScaler y, si no, las descarga de NVIDIA. Si no se puede, avisa y
+# sigue: HelixSR se instala igual, solo que el juego no verá DLSS.
+ensure_nvngx() {
+    local dir=$1 f tmp
+    mkdir -p "$dir" || return 0
+    for f in "${NVNGX_FILES[@]}"; do
+        [ -s "$dir/$f" ] && continue
+        if [ -s "$OUT/OptiScaler/$f" ]; then
+            cp -f "$OUT/OptiScaler/$f" "$dir/$f" && continue
+        fi
+        tmp=$(mktemp "$dir/.$f.XXXXXX") || { say "aviso: no pude preparar $f"; continue; }
+        if curl -fL --retry 3 -sS -o "$tmp" "$NVNGX_URL/$f" && [ -s "$tmp" ]; then
+            chmod 644 "$tmp" && mv -f "$tmp" "$dir/$f"
+        else
+            rm -f "$tmp"
+            say "aviso: no pude descargar $f de NVIDIA: el juego no verá DLSS hasta que esté en $dir"
+        fi
+    done
+    return 0
+}
+nvngx_missing() {
+    local f
+    for f in "${NVNGX_FILES[@]}"; do [ -s "$OUT/OptiScaler/$f" ] || return 0; done
+    return 1
+}
 
 # --- argumentos ---
 while [ $# -gt 0 ]; do
@@ -78,15 +109,24 @@ say "versión: $TAG"
 
 if [ "$FORCE" != 1 ] && [ -s "$OUT/$DLL_NAME" ] && [ -s "$OUT/$OPTI_DLL" ] && [ "$(cat "$OUT/.version" 2>/dev/null || true)" = "$TAG" ]; then
     say "al día: HelixSR $TAG ya está en $OUT"
+    if nvngx_missing && { [ "$ASSUME_YES" = 1 ] || [ -t 0 ]; }; then
+        if [ "$ASSUME_YES" != 1 ]; then
+            read -r -p "Faltan las DLL de DLSS 310.7.0 de NVIDIA (licencia: $DLSS_LICENSE). ¿Descargarlas? [S/n] " ans || ans=n
+            case "$ans" in ''|s|S|y|Y|si|SI|yes|YES) ;; *) exit 0 ;; esac
+        fi
+        say "descargando las DLL de DLSS de NVIDIA a $OUT/OptiScaler..."
+        ensure_nvngx "$OUT/OptiScaler"
+    fi
     exit 0
 fi
 
-# --- confirmación (la DLL de NVIDIA se descarga y se usa una vez) ---
+# --- confirmación (las DLL de NVIDIA se descargan) ---
 if [ "$ASSUME_YES" != 1 ]; then
     [ -t 0 ] || die "sin terminal interactiva: usa --yes para aceptar la descarga de la DLL de NVIDIA"
     cat <<EOF
 Se va a descargar HelixSR $TAG y, para compilarlo, la DLL de DLSS 310.7.0 de NVIDIA (se usa una vez y
-se borra). Su licencia: $DLSS_LICENSE
+se borra). Además se guardan en OptiScaler/ las DLL de DLSS 310.7.0 que HelixSR Scaler necesita para que
+el juego vea DLSS (nvngx_dlss, nvngx_dlssd y nvngx_dlssg). Su licencia: $DLSS_LICENSE
 Las DLL resultantes llevan la red de NVIDIA: son solo para tu equipo, no las compartas.
 Destino: $OUT
 EOF
@@ -281,6 +321,8 @@ done
 for d in OptiScaler Licenses; do
     [ -d "$SCALER/$d" ] && { cp -R "$SCALER/$d" "$OUT_DIR/" || die "no se pudo preparar $d/"; }
 done
+# Las DLL de DLSS no vienen en el release: las que ya había en el destino o, si no, las de NVIDIA.
+ensure_nvngx "$OUT_DIR/OptiScaler"
 # OptiScaler.ini: el del release con los valores que hacen falta para cargarlo desde
 # C:\windows\system32\umu con WINE_OPTISCALER_NAME (HelixSR solo en FfxDx12SRPath: en los dos huecos
 # se llama a sí mismo sin fin).

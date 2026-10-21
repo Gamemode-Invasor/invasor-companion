@@ -106,6 +106,9 @@ OPTI_INI = "OptiScaler.ini"
 HELIXSR_ITEMS = (HELIXSR_DLL, HELIXSR_INI, OPTI_DLL, OPTI_INI, "OptiScaler", "Licenses", "README.txt",
                  "README-Linux.txt", ".version")
 HELIXSR_MERGED = (HELIXSR_INI, OPTI_INI)  # the game's own values stay
+# In OptiScaler/ of HELIXSR_DIR (the script downloads them from NVIDIA): HelixSR Scaler looks for nvngx_dlss.dll
+# next to its DLL, and only then lets the game see DLSS (without it, it turns spoofing off).
+HELIXSR_NVNGX = ("nvngx_dlss.dll", "nvngx_dlssd.dll", "nvngx_dlssg.dll")
 # In umu, symlinks to OPTI_DLL: Wine's OptiScaler hack loads WINE_OPTISCALER_NAME (dxgi.dll) from there.
 HELIXSR_LINKS = ("dxgi.dll", "d3d12.dll")
 HELIXSR_PROTON_BACKUP = "umu.proton"  # where Proton's own OptiScaler (PROTON_USE_OPTISCALER) is kept
@@ -179,10 +182,14 @@ def _has_old(dest):
 
 def _game_needs_copy(dest, installed):
     """Should HelixSR be copied into dest? When it has no DLLs or no HELIXSR_LINKS, holds Proton's OptiScaler, an
-    earlier version of the module left C:\\HelixSR, or it has no .version or an older one than the installed.
-    Without an installed .version (a build by hand) the DLLs are compared instead."""
+    earlier version of the module left C:\\HelixSR, it lacks a HELIXSR_NVNGX DLL that HELIXSR_DIR has, or it has no
+    .version or an older one than the installed. Without an installed .version (a build by hand) the DLLs are
+    compared instead."""
     if _is_proton_umu(dest) or _has_old(dest) or not _has_links(dest) \
             or not all((dest / name).is_file() for name in (HELIXSR_DLL, OPTI_DLL)):
+        return True
+    if any((HELIXSR_DIR / "OptiScaler" / name).is_file() and not (dest / "OptiScaler" / name).is_file()
+           for name in HELIXSR_NVNGX):
         return True
     if installed:
         have = _read_version(dest)
