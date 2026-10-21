@@ -16,7 +16,7 @@
 #   OptiScaler.dll      HelixSR Scaler, con OptiScaler/ (sus DLL de AMD y XeSS), Licenses/ y sus README
 #   OptiScaler/nvngx_dlss*.dll   las DLL de DLSS 310.7.0 de NVIDIA: HelixSR Scaler las busca junto a su DLL para
 #                       que el juego vea DLSS (sin ellas apaga el spoofing); se descargan si faltan
-#   OptiScaler.ini      el del release, ajustado para umu (HelixSR en FfxDx12SRPath)
+#   OptiScaler.ini      el del release, ajustado para umu (HelixSR en FfxDx12SRPath; DX11 y Vulkan por ffx_12, DX12 por ffx)
 #   .version            etiqueta de la versión instalada
 # Al actualizar, los dos ini conservan tus valores y reciben las opciones nuevas.
 # Todo se construye y se valida en un temporal antes de tocar el destino: si algo falla, lo que hubiera
@@ -324,10 +324,13 @@ done
 # Las DLL de DLSS no vienen en el release: las que ya había en el destino o, si no, las de NVIDIA.
 ensure_nvngx "$OUT_DIR/OptiScaler"
 # OptiScaler.ini: el del release con los valores que hacen falta para cargarlo desde
-# C:\windows\system32\umu con WINE_OPTISCALER_NAME (HelixSR solo en FfxDx12SRPath: en los dos huecos
+# C:\windows\system32\umu con WINE_OPTISCALER_NAME y que todas las APIs pasen por HelixSR (Dx11Upscaler y
+# VulkanUpscaler = ffx_12, Dx12Upscaler = ffx; HelixSR solo en FfxDx12SRPath: en los dos huecos
 # se llama a sí mismo sin fin).
 set_ini "$OUT_DIR/$OPTI_INI" \
+    'Upscalers|Dx11Upscaler|ffx_12' \
     'Upscalers|Dx12Upscaler|ffx' \
+    'Upscalers|VulkanUpscaler|ffx_12' \
     'Libraries|OptiDllPath|c:\windows\system32\umu\OptiScaler' \
     'Libraries|FfxDx12SRPath|C:\Windows\System32\umu\helixsr.dll' \
     'Hotfix|CheckForUpdate|false' \
