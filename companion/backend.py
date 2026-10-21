@@ -3,6 +3,7 @@ import filecmp
 import json
 import os
 import re
+import shutil
 import subprocess
 import threading
 import time
@@ -95,14 +96,24 @@ def is_added(path):
 
 
 # Data, not config, and outside the module's folder (a reinstall replaces it): the script keeps the last good
-# build here, plus the installed version in ".version".
+# build here (HelixSR Scaler plus the DLL, as a game's umu), plus the installed version in ".version".
 HELIXSR_DIR = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")) / "HelixSR"
 HELIXSR_DLL = "helixsr.dll"
 HELIXSR_INI = "helixsr.ini"
-HELIXSR_FILES = (HELIXSR_DLL, HELIXSR_INI, ".version")  # what goes into a game's prefix (the version last)
-HELIXSR_LINK = "helixsr_upscaler.dll"  # in the game's prefix, a symlink to HELIXSR_DLL
-HELIXSR_OLD_NAMES = ("amd_fidelityfx_dx12.dll", "amd_fidelityfx_upscaler_dx12.dll")  # earlier versions of the module
-# The script that fetches and builds the DLLs into HELIXSR_DIR (shipped in the module's bin/).
+OPTI_DLL = "OptiScaler.dll"
+OPTI_INI = "OptiScaler.ini"
+# What goes into a game's umu, files and folders: the DLLs first and the version last (a cut copy is proposed again).
+HELIXSR_ITEMS = (HELIXSR_DLL, HELIXSR_INI, OPTI_DLL, OPTI_INI, "OptiScaler", "Licenses", "README.txt",
+                 "README-Linux.txt", ".version")
+HELIXSR_MERGED = (HELIXSR_INI, OPTI_INI)  # the game's own values stay
+# In umu, symlinks to OPTI_DLL: Wine's OptiScaler hack loads WINE_OPTISCALER_NAME (dxgi.dll) from there.
+HELIXSR_LINKS = ("dxgi.dll", "d3d12.dll")
+HELIXSR_PROTON_BACKUP = "umu.proton"  # where Proton's own OptiScaler (PROTON_USE_OPTISCALER) is kept
+# C:\HelixSR of earlier versions of the module, and what they left there.
+HELIXSR_OLD_DIR = "HelixSR"
+HELIXSR_OLD_FILES = (HELIXSR_DLL, HELIXSR_INI, ".version", "helixsr.log", "helixsr_upscaler.dll",
+                     "amd_fidelityfx_dx12.dll", "amd_fidelityfx_upscaler_dx12.dll")
+# The script that fetches and builds HelixSR into HELIXSR_DIR (shipped in the module's bin/).
 HELIXSR_SCRIPT = Path(__file__).resolve().parent / "bin" / "helixsr-fetch.sh"
 HELIXSR_TIMEOUT = 1800
 HELIXSR_RELEASE_API = "https://api.github.com/repos/lonewolf0622/HelixSR/releases/latest"  # the stable one
@@ -124,12 +135,18 @@ def _appid(appid):
 
 
 def _game_dest(appid):
-    """compatdata/<appid>/pfx/drive_c/HelixSR of the first library that has the game's prefix, else None."""
+    """compatdata/<appid>/pfx/drive_c/windows/system32/umu of the first library that has the game's prefix, else
+    None."""
     for lib in steam.libraries():
         drive_c = lib / "compatdata" / appid / "pfx" / "drive_c"
         if drive_c.is_dir():
-            return drive_c / "HelixSR"
+            return drive_c / "windows" / "system32" / "umu"
     return None
+
+
+def _old_dir(dest):
+    """C:\\HelixSR of the prefix whose umu is dest."""
+    return dest.parents[2] / HELIXSR_OLD_DIR
 
 
 def _read_version(folder):
@@ -146,12 +163,26 @@ def _older(version, than):
     return a < b if a and b else version != than
 
 
+def _is_proton_umu(dest):
+    """Does dest hold Proton's own OptiScaler? A umu with files but no HelixSR DLL (Proton never puts one there)."""
+    try:
+        return dest.is_dir() and not (dest / HELIXSR_DLL).exists() and any(dest.iterdir())
+    except OSError:
+        return False
+
+
+def _has_old(dest):
+    """Did an earlier version of the module leave files in C:\\HelixSR?"""
+    old = _old_dir(dest)
+    return any((old / name).exists() or (old / name).is_symlink() for name in HELIXSR_OLD_FILES)
+
+
 def _game_needs_copy(dest, installed):
-    """Should HelixSR be copied into dest? When it has no DLL or no HELIXSR_LINK to it, leftovers of earlier versions,
-    no .version or an older one than the installed. Without an installed .version (a build by hand) the DLLs are
-    compared instead."""
-    if not (dest / HELIXSR_DLL).is_file() or not _has_link(dest) \
-            or any((dest / name).exists() for name in HELIXSR_OLD_NAMES):
+    """Should HelixSR be copied into dest? When it has no DLLs or no HELIXSR_LINKS, holds Proton's OptiScaler, an
+    earlier version of the module left C:\\HelixSR, or it has no .version or an older one than the installed.
+    Without an installed .version (a build by hand) the DLLs are compared instead."""
+    if _is_proton_umu(dest) or _has_old(dest) or not _has_links(dest) \
+            or not all((dest / name).is_file() for name in (HELIXSR_DLL, OPTI_DLL)):
         return True
     if installed:
         have = _read_version(dest)
@@ -159,25 +190,56 @@ def _game_needs_copy(dest, installed):
     return not filecmp.cmp(HELIXSR_DIR / HELIXSR_DLL, dest / HELIXSR_DLL, shallow=False)
 
 
-def _has_link(dest):
-    """Is HELIXSR_LINK in dest a symlink to HELIXSR_DLL?"""
-    link = dest / HELIXSR_LINK
-    return link.is_symlink() and os.readlink(link) == HELIXSR_DLL
+def _has_links(dest):
+    """Is every HELIXSR_LINKS name in dest a symlink to OPTI_DLL?"""
+    return all((dest / name).is_symlink() and os.readlink(dest / name) == OPTI_DLL for name in HELIXSR_LINKS)
 
 
-def _make_link(dest):
-    """Points HELIXSR_LINK in dest at HELIXSR_DLL (relative, so it also works inside Wine)."""
-    if _has_link(dest):
+def _make_links(dest):
+    """Points HELIXSR_LINKS in dest at OPTI_DLL (relative, so they also work inside Wine)."""
+    for name in HELIXSR_LINKS:
+        link = dest / name
+        if link.is_symlink() and os.readlink(link) == OPTI_DLL:
+            continue
+        tmp = dest / (name + ".new")
+        tmp.unlink(missing_ok=True)
+        tmp.symlink_to(OPTI_DLL)
+        os.replace(tmp, link)
+
+
+def _keep_proton_umu(dest):
+    """Moves Proton's OptiScaler out of the way (to umu.proton, or umu.proton-<date> if taken); returns where, or
+    None."""
+    if not _is_proton_umu(dest):
+        return None
+    backup = dest.with_name(HELIXSR_PROTON_BACKUP)
+    if backup.exists() or backup.is_symlink():
+        backup = dest.with_name(f"{HELIXSR_PROTON_BACKUP}-{time.strftime('%Y%m%d-%H%M%S')}")
+    dest.rename(backup)
+    ctx.log.info("moved Proton's OptiScaler to %s", backup)
+    return backup
+
+
+def _clean_old(dest):
+    """Removes what earlier versions of the module left in C:\\HelixSR (and the folder, if nothing else is there).
+    Its helixsr.ini is taken into umu first when umu has none, so its values are merged."""
+    old = _old_dir(dest)
+    if not old.is_dir():
         return
-    tmp = dest / (HELIXSR_LINK + ".new")
-    tmp.unlink(missing_ok=True)
-    tmp.symlink_to(HELIXSR_DLL)
-    os.replace(tmp, dest / HELIXSR_LINK)
+    if not (dest / HELIXSR_INI).is_file() and (old / HELIXSR_INI).is_file():
+        _replace(dest / HELIXSR_INI, (old / HELIXSR_INI).read_bytes())
+    for name in HELIXSR_OLD_FILES:
+        (old / name).unlink(missing_ok=True)
+    try:
+        old.rmdir()
+    except OSError:
+        pass  # something of the user's is still there: it stays
 
 
 def _merge_ini(mine, new):
     """The new ini with the values of `mine`: its structure and comments, your values; options it no longer has are
-    dropped, new ones come with their default. (Same as the awk of helixsr-fetch.sh.)"""
+    dropped, new ones come with their default. Only lines whose value differs change, in the new line's format.
+    (Same as the awk of helixsr-fetch.sh.)"""
     def parse(line):
         text = line.strip()
         if text.startswith("[") and text.endswith("]"):
@@ -199,8 +261,12 @@ def _merge_ini(mine, new):
         if sec:
             section = sec
         elif key and (section, key.lower()) in values:
-            eol = line[len(line.rstrip("\r\n")):]
-            line = f"{key} = {values[(section, key.lower())]}{eol}"
+            value = values[(section, key.lower())]
+            head, rest = line.split("=", 1)
+            if rest.strip() != value:
+                eol = rest[len(rest.rstrip("\r\n")):]
+                gap = rest[:len(rest) - len(rest.lstrip(" \t"))]
+                line = f"{head}={gap}{value}{eol}"
         out.append(line)
     return "".join(out)
 
@@ -212,13 +278,30 @@ def _replace(path, data):
     os.replace(tmp, path)
 
 
+def _replace_file(src, path):
+    """Copies src to path atomically, as _replace."""
+    tmp = path.with_name(path.name + ".new")
+    shutil.copyfile(src, tmp)
+    os.replace(tmp, path)
+
+
+def _replace_tree(src, dest):
+    """Copies the folder src into dest file by file (_replace_file); what dest has besides stays."""
+    for root, _dirs, files in os.walk(src):
+        target = dest / Path(root).relative_to(src)
+        target.mkdir(parents=True, exist_ok=True)
+        for name in files:
+            _replace_file(Path(root) / name, target / name)
+
+
 def helixsr_status(appid=None):
-    """{"found", "dir", "version", "game"}: found when the DLL is in HELIXSR_DIR; version is its .version or None.
+    """{"found", "dir", "version", "game"}: found when HELIXSR_DIR has HelixSR and HelixSR Scaler; version is its
+    .version or None.
 
     game is None without a game; else {"prefix": bool, "copy": bool, "version": str|None}: does it have a prefix,
     does HelixSR need copying into it (see _game_needs_copy), and which version does it carry?
     """
-    found = (HELIXSR_DIR / HELIXSR_DLL).is_file()
+    found = all((HELIXSR_DIR / name).is_file() for name in (HELIXSR_DLL, OPTI_DLL))
     version = _read_version(HELIXSR_DIR)
     game = None
     appid = _appid(appid)
@@ -269,7 +352,11 @@ def helixsr_check(appid=None):
 
 
 def helixsr_copy(appid):
-    """Copies HELIXSR_FILES into the game's prefix (C:\\HelixSR) plus HELIXSR_LINK; returns helixsr_status(appid)."""
+    """Copies HELIXSR_ITEMS into the game's C:\\windows\\system32\\umu plus HELIXSR_LINKS; returns
+    helixsr_status(appid).
+
+    Proton's own OptiScaler there is moved to umu.proton first, and C:\\HelixSR of earlier versions is cleaned.
+    """
     appid = _appid(appid)
     if not appid:
         raise ctx.InvalidArgument("no game")
@@ -279,19 +366,22 @@ def helixsr_copy(appid):
     if dest is None:
         raise ctx.Unavailable("the game has no Proton prefix yet (run it once)")
     try:
+        _keep_proton_umu(dest)
         dest.mkdir(parents=True, exist_ok=True)
-        for name in HELIXSR_OLD_NAMES:  # no leftovers of earlier versions
-            (dest / name).unlink(missing_ok=True)
-        for name in HELIXSR_FILES:  # the DLL first and the version last: a cut copy is proposed again
+        _clean_old(dest)
+        for name in HELIXSR_ITEMS:
             if name == ".version":
-                _make_link(dest)
+                _make_links(dest)
             src = HELIXSR_DIR / name
-            if not src.is_file():
+            if src.is_dir():
+                _replace_tree(src, dest / name)
+            elif not src.is_file():
                 continue
-            data = src.read_bytes()
-            if name == HELIXSR_INI and (dest / name).is_file():  # the game's own settings stay
-                data = _merge_ini((dest / name).read_text(errors="replace"), data.decode(errors="replace")).encode()
-            _replace(dest / name, data)
+            elif name in HELIXSR_MERGED and (dest / name).is_file():  # the game's own settings stay
+                mine = (dest / name).read_text(errors="replace")
+                _replace(dest / name, _merge_ini(mine, src.read_bytes().decode(errors="replace")).encode())
+            else:
+                _replace_file(src, dest / name)
     except OSError as e:
         raise ctx.Unavailable(f"could not copy HelixSR: {e}")
     ctx.log.info("copied HelixSR to %s", dest)

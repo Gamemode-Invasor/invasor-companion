@@ -14,14 +14,12 @@ RESERVED = frozenset({
     "FSR4_UPGRADE", "PROTON_FSR4_UPGRADE", "PROTON_FSR4_INDICATOR", "DXVK_HDR", "PROTON_ENABLE_HDR",
     "PROTON_NO_D3D11", "PROTON_NO_D3D10", "PROTON_DXVK_D3D8", "PROTON_NO_ESYNC", "PROTON_NO_FSYNC",
     "PROTON_FORCE_LARGE_ADDRESS_AWARE", "PROTON_LOG", "SteamDeck", "PROTON_USE_OPTISCALER", "PROTON_OPTISCALER_CONFIG",
+    "WINE_OPTISCALER_NAME",
 })
 
-# HelixSR runs through OptiScaler; its DLLs live in C:\HelixSR inside the prefix.
-HELIXSR_CONFIG = (
-    "Upscalers.Dx12Upscaler=fsr31;"
-    "Libraries.FfxDx12Path=C:\\HelixSR\\helixsr.dll;"
-    "Libraries.FfxDx12SRPath=C:\\HelixSR\\helixsr_upscaler.dll"
-)
+# HelixSR runs through HelixSR Scaler (its OptiScaler), copied into the prefix's C:\windows\system32\umu: Wine
+# loads it from there in place of dxgi.dll. Not PROTON_USE_OPTISCALER, which would put Proton's OptiScaler there.
+HELIXSR_VARS = "WINE_OPTISCALER_NAME=dxgi.dll"
 
 # Boolean options: state key -> what it adds.
 FLAGS = (
@@ -41,11 +39,6 @@ FLAGS = (
 def quote(value):
     """Inside double quotes, for the shell Steam runs the options with."""
     return '"' + re.sub(r'([\\"$`])', r"\\\1", str(value)) + '"'
-
-
-def quote_single(value):
-    """Inside single quotes: nothing is interpreted, except the quote itself."""
-    return "'" + str(value).replace("'", "'\\''") + "'"
 
 
 def quote_if_needed(value):
@@ -122,7 +115,7 @@ def build(state, home="~"):
     if use_helixsr and fsr4.get("on"):
         warnings.append({"code": "helixsr_fsr4"})
     if use_helixsr:
-        variables.append("PROTON_USE_OPTISCALER=1 PROTON_OPTISCALER_CONFIG=" + quote_single(HELIXSR_CONFIG))
+        variables.append(HELIXSR_VARS)
 
     # PROTON_FSR4_UPGRADE=1: GE-Proton / proton-cachyos pick the latest version.
     if use_fsr4:
