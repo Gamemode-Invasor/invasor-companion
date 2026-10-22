@@ -489,8 +489,8 @@ def game_info(appid=None):
     known = {}
     try:
         known = ctx.game.info(appid) or {}
-    except Exception:
-        pass
+    except Exception as e:
+        ctx.log.info("game info for %s not available: %s", appid, e)
     return gameinfo.game_info(appid, name=known.get("name"), shortcut=known.get("shortcut"))
 
 
