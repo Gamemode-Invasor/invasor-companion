@@ -69,24 +69,6 @@ class BuildTest(unittest.TestCase):
         out = build(fsr4={"on": True}, fsr4Indicator=True)["command"]
         self.assertIn("PROTON_FSR4_INDICATOR=1", out)
 
-    def test_helixsr(self):
-        self.assertEqual(build(helixsr={"on": False})["command"], "")
-        self.assertEqual(
-            build(helixsr={"on": True})["command"],
-            "WINE_OPTISCALER_NAME=dxgi.dll %command%",
-        )
-
-    def test_helixsr_excludes_fsr4(self):
-        out = build(helixsr={"on": True}, fsr4={"on": True}, fsr4Indicator=True)
-        self.assertNotIn("FSR4", out["command"])
-        self.assertIn("WINE_OPTISCALER_NAME=dxgi.dll", out["command"])
-        self.assertEqual([w["code"] for w in out["warnings"]], ["helixsr_fsr4"])
-
-    def test_helixsr_variables_are_reserved(self):
-        for name in ("PROTON_USE_OPTISCALER", "WINE_OPTISCALER_NAME"):
-            out = build(custom=[{"name": name, "value": "1"}])
-            self.assertEqual([w["code"] for w in out["warnings"]], ["custom_reserved"], name)
-
     def test_fps_limit_is_sanitized(self):
         for value, want in (("abc", 30), (None, 30), (-5, 0), (999, 240), ("60", 60), (59.9, 59), (float("inf"), 30)):
             out = build(fpsLimit={"on": True, "value": value})["command"]

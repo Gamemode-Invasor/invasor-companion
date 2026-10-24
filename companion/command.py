@@ -13,13 +13,8 @@ RESERVED = frozenset({
     "PROTON_USE_WINED3D", "MESA_LOADER_DRIVER_OVERRIDE", "STEAM_COMPAT_DATA_PATH", "WINEDLLOVERRIDES",
     "FSR4_UPGRADE", "PROTON_FSR4_UPGRADE", "PROTON_FSR4_INDICATOR", "DXVK_HDR", "PROTON_ENABLE_HDR",
     "PROTON_NO_D3D11", "PROTON_NO_D3D10", "PROTON_DXVK_D3D8", "PROTON_NO_ESYNC", "PROTON_NO_FSYNC",
-    "PROTON_FORCE_LARGE_ADDRESS_AWARE", "PROTON_LOG", "SteamDeck", "PROTON_USE_OPTISCALER", "PROTON_OPTISCALER_CONFIG",
-    "WINE_OPTISCALER_NAME",
+    "PROTON_FORCE_LARGE_ADDRESS_AWARE", "PROTON_LOG", "SteamDeck",
 })
-
-# HelixSR runs through HelixSR Scaler (its OptiScaler), copied into the prefix's C:\windows\system32\umu: Wine
-# loads it from there in place of dxgi.dll. Not PROTON_USE_OPTISCALER, which would put Proton's OptiScaler there.
-HELIXSR_VARS = "WINE_OPTISCALER_NAME=dxgi.dll"
 
 # Boolean options: state key -> what it adds.
 FLAGS = (
@@ -82,14 +77,13 @@ def build(state, home="~"):
     """{"command", "warnings"}: command is "" when nothing is selected.
 
     Warnings are {"code", "name"?} for the UI to word: lsfg_wined3d, lsfg_mangohud, empty_mako,
-    empty_lsfg, empty_prefix, empty_dll, mako_lsfg, helixsr_fsr4, custom_invalid / custom_reserved / custom_duplicate (name).
+    empty_lsfg, empty_prefix, empty_dll, mako_lsfg, custom_invalid / custom_reserved / custom_duplicate (name).
     """
     variables, warnings = [], []
     # PROTON_LOG=1 goes first of all: Proton writes ~/steam-<appid>.log.
     if state.get("protonLog"):
         variables.append("PROTON_LOG=1")
     mako, lsfg, fsr4 = _section(state, "mako"), _section(state, "lsfg"), _section(state, "fsr4")
-    helixsr = _section(state, "helixsr")
     prefix, dll = _section(state, "prefix"), _section(state, "dllOverrides")
 
     mako_profile = _text(mako.get("profile"))
@@ -109,14 +103,7 @@ def build(state, home="~"):
     elif use_lsfg:
         warnings.append({"code": "empty_lsfg"})
 
-    # HelixSR and FSR 4 exclude each other (the UI turns one off when the other is picked).
-    use_helixsr = bool(helixsr.get("on"))
-    use_fsr4 = bool(fsr4.get("on")) and not use_helixsr
-    if use_helixsr and fsr4.get("on"):
-        warnings.append({"code": "helixsr_fsr4"})
-    if use_helixsr:
-        variables.append(HELIXSR_VARS)
-
+    use_fsr4 = bool(fsr4.get("on"))
     # PROTON_FSR4_UPGRADE=1: GE-Proton / proton-cachyos pick the latest version.
     if use_fsr4:
         variables.append("FSR4_UPGRADE=1 PROTON_FSR4_UPGRADE=1")

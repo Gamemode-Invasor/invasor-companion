@@ -1,4 +1,4 @@
-import { currentGame, ui, type ModuleCtx } from "invasor";
+import { ui, type ModuleCtx } from "invasor";
 import { copyText, openBrowser } from "./common";
 import type { Strings } from "./texts";
 
@@ -12,7 +12,6 @@ function defaults() {
     lsfg: { on: false, profile: "default" },
     fsr4: { on: false },
     fsr4Indicator: false,
-    helixsr: { on: false },
     fpsLimit: { on: false, value: 30 },
     showInfo: false,
     wined3d: false, zink: false, hdr: false, noD3d11: false, noD3d10: false, dxvkD3d8: false,
@@ -24,8 +23,6 @@ function defaults() {
   };
 }
 type State = ReturnType<typeof defaults>;
-
-export let refreshHelixsr: (() => Promise<void>) | null = null;
 
 export async function launcher(el: HTMLElement, ctx: ModuleCtx, t: Strings) {
   let state: State = defaults();
@@ -131,85 +128,6 @@ export async function launcher(el: HTMLElement, ctx: ModuleCtx, t: Strings) {
   const makoProfile = text(t.profile, () => s().mako.profile, (v) => (s().mako.profile = v));
   const lsfgProfile = text(t.profile, () => s().lsfg.profile, (v) => (s().lsfg.profile = v));
   const fsr4Indicator = toggle(t.fsr4Indicator, () => s().fsr4Indicator, (v) => (s().fsr4Indicator = v));
-  const helixsrStatus = ui.info("");
-  let helixsrFound = false;
-  let helixsrCopyNeeded = false;
-  let helixsrBusy = false;
-  let helixsrUpdate: { from: string; to: string } | null = null; // set when the latest stable is newer
-  type HelixsrStatus = { found: boolean; dir: string; version: string | null; game: { copy: boolean; version: string | null } | null };
-  function showHelixsr(st: HelixsrStatus) {
-    helixsrFound = st.found;
-    helixsrCopyNeeded = !!st.game?.copy;
-    helixsrCopy.textContent = st.version
-      ? t.helixsrCopyVersion.replace("%from%", st.game?.version ?? t.helixsrNoVersion).replace("%to%", st.version)
-      : t.helixsrCopy;
-    helixsrStatus.textContent = !st.found
-      ? t.helixsrMissing
-      : st.version
-        ? t.helixsrFoundVersion.replace("%v%", st.version).replace("%dir%", st.dir)
-        : t.helixsrFound.replace("%dir%", st.dir);
-  }
-  async function paintHelixsr() {
-    if (helixsrBusy) return; // the download repaints when it ends
-    const appid = currentGame(ctx.game())?.game.appid ?? "";
-    try {
-      showHelixsr(await ctx.call<HelixsrStatus>("helixsr_status", appid ? { appid } : {}));
-    } catch {
-      showHelixsr({ found: false, dir: "", version: null, game: null });
-    }
-    sync();
-    // The latest stable asks GitHub: after the local state is on screen, and an offline Deck just keeps it.
-    try {
-      const st = await ctx.call<HelixsrStatus & { latest: string | null; update: boolean }>(
-        "helixsr_check",
-        appid ? { appid } : {},
-      );
-      if (helixsrBusy) return;
-      showHelixsr(st);
-      helixsrUpdate = st.update && st.version && st.latest ? { from: st.version, to: st.latest } : null;
-      helixsrDownload.textContent = helixsrUpdate
-        ? t.helixsrUpdate.replace("%from%", helixsrUpdate.from).replace("%to%", helixsrUpdate.to)
-        : t.helixsrDownload;
-    } catch {
-      helixsrUpdate = null;
-    }
-    sync();
-  }
-  const helixsrDownload = ui.button({
-    label: t.helixsrDownload,
-    onClick: async () => {
-      if (helixsrBusy) return;
-      // Heavy: not while a game is running (the backend refuses too).
-      if (ctx.game().running) return ctx.toast(t.helixsrGameRunning, "error");
-      helixsrBusy = true;
-      helixsrDownload.style.display = "none";
-      helixsrStatus.textContent = `${t.helixsrDownloading} ${t.helixsrHeavy}`;
-      ctx.toast(t.helixsrHeavy, "ok");
-      try {
-        await ctx.call("helixsr_download");
-        ctx.toast(t.helixsrDone, "ok");
-      } catch {
-        ctx.toast(helixsrFound ? t.helixsrUpdateFailed : t.helixsrFailed, "error");
-      } finally {
-        helixsrBusy = false;
-      }
-      await paintHelixsr();
-    },
-  });
-  const helixsrCopy = ui.button({
-    label: t.helixsrCopy,
-    onClick: async () => {
-      const appid = currentGame(ctx.game())?.game.appid ?? "";
-      try {
-        await ctx.call("helixsr_copy", { appid });
-        ctx.toast(t.helixsrCopied, "ok");
-      } catch {
-        ctx.toast(t.helixsrCopyFailed, "error");
-      }
-      await paintHelixsr();
-    },
-  });
-  refreshHelixsr = paintHelixsr;
   const fpsValue = track(
     ui.number({
       label: t.fps, value: 30, min: 0, max: 240, step: 1,
@@ -224,35 +142,18 @@ export async function launcher(el: HTMLElement, ctx: ModuleCtx, t: Strings) {
     dep(makoProfile, s().mako.on);
     dep(lsfgProfile, s().lsfg.on);
     dep(fsr4Indicator, s().fsr4.on);
-    dep(helixsrStatus, s().helixsr.on);
-    dep(helixsrDownload, s().helixsr.on && (!helixsrFound || !!helixsrUpdate) && !helixsrBusy);
-    dep(helixsrCopy, s().helixsr.on && helixsrFound && helixsrCopyNeeded);
     dep(fpsValue, s().fpsLimit.on);
     dep(chooseFolder, s().prefix.on);
     dep(dllValue, s().dllOverrides.on);
   }
 
-  // FSR4 and HelixSR exclude each other: picking one turns the other off.
   const fsr4Toggle = toggle(t.fsr4, () => s().fsr4.on, (v) => {
     s().fsr4.on = v;
     if (!v) {
       s().fsr4Indicator = false;
       fsr4Indicator.set(false);
-    } else if (s().helixsr.on) {
-      s().helixsr.on = false;
-      helixsrToggle.set(false);
     }
   }, t.fsr4Hint);
-  const helixsrToggle = toggle(t.helixsr, () => s().helixsr.on, (v) => {
-    s().helixsr.on = v;
-    if (v) {
-      s().fsr4.on = false;
-      s().fsr4Indicator = false;
-      fsr4Toggle.set(false);
-      fsr4Indicator.set(false);
-      void paintHelixsr();
-    }
-  }, t.helixsrHint);
 
   // MAKO and lsfg-vk exclude each other: picking one turns the other off.
   const makoToggle = toggle(t.mako, () => s().mako.on, (v) => {
@@ -281,10 +182,7 @@ export async function launcher(el: HTMLElement, ctx: ModuleCtx, t: Strings) {
       fsr4Toggle,
       fsr4Indicator,
       ui.separator(),
-      helixsrToggle,
-      helixsrStatus,
-      helixsrDownload,
-      helixsrCopy,
+      ui.info(t.helixsrMoved),
     ], { open: false }),
     ui.section(t.mangohud, [
       toggle(t.fpsLimit, () => s().fpsLimit.on, (v) => (s().fpsLimit.on = v), t.mangohudHint),
@@ -321,7 +219,6 @@ export async function launcher(el: HTMLElement, ctx: ModuleCtx, t: Strings) {
   drawCustom();
   paintPrefix();
   sync();
-  void paintHelixsr();
   el.append(preview, copy, warnings, ...sections, reset);
   await refresh();
 }

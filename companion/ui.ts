@@ -1,6 +1,6 @@
 import { currentGame, defineModule, ui, type ModuleCtx } from "invasor";
 import { copyText, openBrowser } from "./common";
-import { launcher, refreshHelixsr } from "./launcher";
+import { launcher } from "./launcher";
 import { T, type Lang, type Strings } from "./texts";
 
 function addTo(el: HTMLElement, ctx: ModuleCtx, t: Strings) {
@@ -217,7 +217,7 @@ let refreshGame: (() => Promise<void>) | null = null;
 
 export default defineModule({
   tabsAlign: "justify",
-  onGameChange: () => (void refreshGame?.(), void refreshHelixsr?.()),
+  onGameChange: () => void refreshGame?.(),
   tabs: [
     {
       label: "Lanzador",
