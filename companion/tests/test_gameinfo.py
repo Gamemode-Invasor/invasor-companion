@@ -83,6 +83,13 @@ class KvTest(unittest.TestCase):
         self.assertEqual(out["shortcuts"]["0"]["AppName"], "Thing")
         with self.assertRaises(ValueError):
             kv.loads_binary(b"\x00shortcuts\x00\x01x")
+        with self.assertRaises(ValueError):  # nested beyond reason: an error, not a crash
+            kv.loads_binary(b"\x00a\x00" * 5000)
+
+    def test_text_block_without_a_name(self):
+        d = kv.loads_text('{ "x" "y" } "A" { "b" "1" }')
+        self.assertEqual(kv.get(d, "a", "b"), "1")
+        self.assertEqual(list(d), ["A"])
 
 
 class SteamGameTest(unittest.TestCase):

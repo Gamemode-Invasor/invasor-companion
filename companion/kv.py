@@ -14,7 +14,8 @@ def loads_text(text):
         word, brace = m.groups()
         if brace == "{":
             child = {}
-            node[key] = child
+            if key is not None:  # a block with no name is read and left out
+                node[key] = child
             stack.append(node)
             node, key = child, None
         elif brace == "}":
@@ -36,7 +37,7 @@ def get(node, *path, default=None):
     for name in path:
         if not isinstance(node, dict):
             return default
-        found = next((v for k, v in node.items() if k.lower() == str(name).lower()), None)
+        found = next((v for k, v in node.items() if str(k).lower() == str(name).lower()), None)
         if found is None:
             return default
         node = found
@@ -75,5 +76,5 @@ def loads_binary(data):
 
     try:
         return read_map()
-    except (IndexError, ValueError, struct.error) as e:
+    except (IndexError, ValueError, struct.error, RecursionError) as e:  # RecursionError: nested beyond reason
         raise ValueError("truncated or invalid VDF") from e
