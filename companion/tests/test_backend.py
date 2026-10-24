@@ -3,6 +3,7 @@ import logging
 import subprocess
 import sys
 import tempfile
+import tomllib
 import urllib.parse
 import unittest
 from pathlib import Path
@@ -38,6 +39,20 @@ class FakeCtx:
         def on(cls, name, callback):
             cls.handlers[name] = callback
 
+    class toml:
+        """ctx.toml.load as the core does it: ({}, None) when the file is missing, InvalidArgument if it isn't TOML."""
+
+        @staticmethod
+        def load(path):
+            try:
+                raw = Path(path).read_bytes()
+            except FileNotFoundError:
+                return {}, None
+            try:
+                return tomllib.loads(raw.decode()), 1
+            except (UnicodeDecodeError, tomllib.TOMLDecodeError) as e:
+                raise FakeCtx.InvalidArgument(str(e)) from None
+
     class game:
         selected = None
 
@@ -51,7 +66,25 @@ class BackendTest(unittest.TestCase):
         backend = load_backend()
         backend.setup(FakeCtx())
         self.assertEqual(set(backend.METHODS), {
-            "build", "language", "browse", "add_to_steam", "is_added", "game_info", "clean_scan", "clean_delete"})
+            "build", "language", "browse", "add_to_steam", "is_added", "game_info", "profiles", "clean_scan",
+            "clean_delete"})
+
+    def test_profiles(self):
+        backend = load_backend()
+        backend.setup(FakeCtx())
+        with tempfile.TemporaryDirectory() as d:
+            mako = Path(d) / "mako.toml"
+            mako.write_text('version = 2\n[[profile]]\nname = "default"\n[[profile]]\nname = "The Witcher 3 — Remastered"\n'
+                            '[[profile]]\nname = "default"\n[[profile]]\nmultiplier = 2\n')
+            env = {"MAKO_CONFIG": str(mako), "XDG_CONFIG_HOME": d}  # no lsfg-vk/conf.toml there
+            with mock.patch.dict("os.environ", env):
+                self.assertEqual(backend.profiles(), {"mako": ["default", "The Witcher 3 — Remastered"], "lsfg": []})
+                mako.write_text("not = = toml")
+                self.assertEqual(backend.profiles()["mako"], [])  # broken: typed by hand
+                lsfg = Path(d) / "lsfg-vk" / "conf.toml"
+                lsfg.parent.mkdir()
+                lsfg.write_text('[[profile]]\nname = "2x"\n')
+                self.assertEqual(backend.profiles()["lsfg"], ["2x"])
 
     def test_build_uses_home_and_ignores_garbage(self):
         backend = load_backend()

@@ -5,6 +5,8 @@ import type { Strings } from "./texts";
 interface Warning { code: string; name?: string }
 interface Built { command: string; warnings: Warning[] }
 interface Custom { name: string; value: string }
+/** The profiles of MAKO and lsfg-vk, as their conf.toml lists them (see backend.profiles). */
+interface Profiles { mako: string[]; lsfg: string[] }
 
 function defaults() {
   return {
@@ -25,7 +27,16 @@ function defaults() {
 type State = ReturnType<typeof defaults>;
 
 export async function launcher(el: HTMLElement, ctx: ModuleCtx, t: Strings) {
-  let state: State = defaults();
+  const profiles = await ctx.call<Profiles>("profiles").catch((): Profiles => ({ mako: [], lsfg: [] }));
+  // The profile an option starts with: "default" when the program has it (or when there's no list), else its first.
+  const firstProfile = (names: string[]) => (names.length && !names.includes("default") ? names[0] : "default");
+  function fresh(): State {
+    const fresh = defaults();
+    fresh.mako.profile = firstProfile(profiles.mako);
+    fresh.lsfg.profile = firstProfile(profiles.lsfg);
+    return fresh;
+  }
+  let state: State = fresh();
   let command = "";
   let seq = 0;
 
@@ -115,7 +126,7 @@ export async function launcher(el: HTMLElement, ctx: ModuleCtx, t: Strings) {
     label: t.reset,
     onClick: async () => {
       if (!(await ui.confirm(t.resetAsk, { ok: t.yes, cancel: t.cancel }))) return;
-      state = defaults();
+      state = fresh();
       controls.forEach((c) => c.set(c.get() as never));
       paintPrefix();
       drawCustom();
@@ -125,8 +136,16 @@ export async function launcher(el: HTMLElement, ctx: ModuleCtx, t: Strings) {
 
   const s = () => state;
   // Fields that only show while their option is on (see sync).
-  const makoProfile = text(t.profile, () => s().mako.profile, (v) => (s().mako.profile = v));
-  const lsfgProfile = text(t.profile, () => s().lsfg.profile, (v) => (s().lsfg.profile = v));
+  // ←→ picks one of the installed profiles; with none found (not installed, or its file can't be read), it's typed.
+  const profile = (names: string[], get: () => string, set: (v: string) => void) =>
+    names.length
+      ? track(ui.select({
+        label: t.profile, value: get(), options: names.map((n) => ({ value: n, label: n })),
+        onChange: (v) => (set(String(v)), change()),
+      }), get)
+      : text(t.profile, get, set);
+  const makoProfile = profile(profiles.mako, () => s().mako.profile, (v) => (s().mako.profile = v));
+  const lsfgProfile = profile(profiles.lsfg, () => s().lsfg.profile, (v) => (s().lsfg.profile = v));
   const fsr4Indicator = toggle(t.fsr4Indicator, () => s().fsr4Indicator, (v) => (s().fsr4Indicator = v));
   const fpsValue = track(
     ui.number({

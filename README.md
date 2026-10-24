@@ -10,7 +10,7 @@ Launch options. It adds a **Compa** tab (not shown in the Quick Access) with fou
   FG/upscalers (MAKO, lsfg-vk, FSR 4), MangoHud (FPS limit, API and FPS), graphics (wined3d, Zink, HDR, Direct3D),
   Proton (32-bit compatibility, large address aware, esync/fsync, PROTON LOG = `PROTON_LOG=1` at the very start of the command, so Proton writes `~/steam-<AppID>.log`, prefix chosen in a folder browser that starts at `compatdata` and can go anywhere), environment (DLL overrides, "not a Steam Deck" = `SteamDeck=0`, custom variables)
   and *Reset all*. Incompatible or empty combinations show a warning. The choices are not saved: they reset when the tab reloads.
-  MAKO and lsfg-vk exclude each other: turning one on turns the other off.
+  MAKO and lsfg-vk exclude each other: turning one on turns the other off. Their profile is picked with ←→ among the ones installed on this machine (the `[[profile]]` names of `~/.config/mako-render/conf.toml` and `~/.config/lsfg-vk/conf.toml`, or of `$MAKO_CONFIG` / `$LSFGVK_CONFIG`), read when the tab opens; when none is found (not installed, or the file can't be read), it's typed instead.
   HelixSR has moved to the [Opti](https://github.com/Gamemode-Invasor/invasor-opti) module (Opti tab → Global → Custom DLLs), and the upscalers section says so where its switch was. What earlier versions of Companion installed isn't touched: games that have HelixSR Scaler in their prefix keep it, and `~/.local/share/HelixSR/` can be removed by hand.
 - **Game**: everything Steam's files say about the current game (the open page, else the highlighted one, else the
   running one), grouped in sections: general, installation (library, folder, size, state, build, updates), play (last
@@ -26,7 +26,7 @@ The texts follow Steam's language (Spanish or English). The logic is a port of t
 `../companion`; it only builds the text and never touches the game's files.
 
 ## Requirements
-Invasor 0.2.0 or newer (`min_core`): it uses `ctx.events`.
+Invasor 0.2.0 or newer (`min_core`): it uses `ctx.events` and `ctx.toml`.
 
 ## Build, test and install
 With the core checked out next to this repository (`../invasor`):

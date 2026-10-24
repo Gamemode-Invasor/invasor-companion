@@ -10,7 +10,7 @@ Opciones de lanzamiento del juego. Añade una pestaña **Compa** (que no aparece
   FG/escaladores (MAKO, lsfg-vk, FSR 4), MangoHud (límite de FPS, API y FPS), gráficos (wined3d, Zink, HDR, Direct3D),
   Proton (compatibilidad de 32 bits, large address aware, esync/fsync, PROTON LOG = `PROTON_LOG=1` al principio de todo el comando, para que Proton deje `~/steam-<AppID>.log`, prefijo elegido en un explorador de carpetas que empieza en `compatdata` y puede ir a cualquier sitio), entorno (DLL overrides, «no es una Steam Deck» = `SteamDeck=0`, variables personalizadas)
   y *Restablecer todo*. Las combinaciones incompatibles o vacías muestran un aviso. Las elecciones no se guardan: se restablecen al recargar la pestaña.
-  MAKO y lsfg-vk se excluyen entre sí: al activar uno se desactiva el otro.
+  MAKO y lsfg-vk se excluyen entre sí: al activar uno se desactiva el otro. Su perfil se elige con ←→ entre los instalados en este equipo (los nombres `[[profile]]` de `~/.config/mako-render/conf.toml` y `~/.config/lsfg-vk/conf.toml`, o de `$MAKO_CONFIG` / `$LSFGVK_CONFIG`), leídos al abrir la pestaña; si no se encuentra ninguno (no instalado, o el fichero no se puede leer), se escribe a mano.
   HelixSR se ha movido al módulo [Opti](https://github.com/Gamemode-Invasor/invasor-opti) (pestaña Opti → Global → Custom DLLs), y la sección de escaladores lo dice donde estaba su interruptor. Lo que instalaron versiones anteriores de Companion no se toca: los juegos con HelixSR Scaler en su prefijo lo conservan, y `~/.local/share/HelixSR/` se puede borrar a mano.
 - **Juego**: todo lo que los archivos de Steam dicen del juego actual (la página abierta; si no, el resaltado; si no, el
   que se está ejecutando), agrupado en secciones: general, instalación (biblioteca, carpeta, tamaño, estado, compilación, actualizaciones), juego (última
@@ -26,7 +26,7 @@ Los textos siguen el idioma de Steam (español o inglés). La lógica es un port
 `../companion`; solo construye el texto y nunca toca los ficheros del juego.
 
 ## Requisitos
-Invasor 0.2.0 o posterior (`min_core`): usa `ctx.events`.
+Invasor 0.2.0 o posterior (`min_core`): usa `ctx.events` y `ctx.toml`.
 
 ## Compilar, probar e instalar
 Con el núcleo descargado junto a este repositorio (`../invasor`):

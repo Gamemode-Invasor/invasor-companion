@@ -90,6 +90,33 @@ def is_added(path):
     return steam.shortcut_added(path)
 
 
+# Where MAKO and lsfg-vk read their profiles: the variable when it's set, else <XDG config>/<folder>/conf.toml.
+PROFILE_CONFIGS = {"mako": ("MAKO_CONFIG", "mako-render"), "lsfg": ("LSFGVK_CONFIG", "lsfg-vk")}
+
+
+def _profile_config(var, folder):
+    if os.environ.get(var):
+        return Path(os.environ[var])
+    return Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / folder / "conf.toml"
+
+
+def profiles():
+    """{"mako": [names], "lsfg": [names]}: the [[profile]] names of each program's conf.toml, in its order; []
+    when it has none or can't be read (the Launcher tab then lets the user type one)."""
+    out = {}
+    for key, (var, folder) in PROFILE_CONFIGS.items():
+        path = _profile_config(var, folder)
+        try:
+            data, _ = ctx.toml.load(path)
+        except (ctx.InvalidArgument, ctx.Unavailable, OSError) as e:
+            ctx.log.warning("can't read the %s profiles in %s: %s", key, path, e)
+            data = {}
+        items = data.get("profile")
+        names = [p.get("name") for p in items if isinstance(p, dict)] if isinstance(items, list) else []
+        out[key] = list(dict.fromkeys(n for n in names if isinstance(n, str) and n))
+    return out
+
+
 def game_info(appid=None):
     """What Steam's files say about a game (default: the selected one), for the Game tab."""
     if appid in (None, ""):
@@ -167,4 +194,5 @@ def clean_delete(paths):
 
 
 METHODS = {"build": build, "language": language, "browse": browse, "add_to_steam": add_to_steam,
-           "is_added": is_added, "game_info": game_info, "clean_scan": clean_scan, "clean_delete": clean_delete}
+           "is_added": is_added, "game_info": game_info, "profiles": profiles, "clean_scan": clean_scan,
+           "clean_delete": clean_delete}
