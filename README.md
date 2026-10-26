@@ -11,6 +11,14 @@ A module for [Invasor](../invasor) that **builds a game's Steam launch options**
 
 The texts follow Steam's language (Spanish or English). The logic is a port of the Companion launcher in `../companion`; it only builds the text and never touches the game's files.
 
+## Screenshots
+
+<p align="center">
+  <img src="docs/launcher.png" alt="Launcher page" width="32%">
+  <img src="docs/game.png" alt="Game page with the enrichers" width="32%">
+  <img src="docs/steam.png" alt="Steam page" width="32%">
+</p>
+
 ## Requirements
 Invasor 0.3.0 or newer (`min_core`): it uses `ctx.events`, `ctx.toml`, `ctx.data`, `ctx.paths`, `ctx.vdf`, `ctx.steam` (adding shortcuts, reading launch options, opening pages), `ctx.http` (the enrichers), `ctx.steam_language`, and in the UI `ctx.copy` and `ctx.pickPath`.
 
