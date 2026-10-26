@@ -32,6 +32,7 @@ class FakeCtx:
     def __init__(self, root=None):
         self.root = Path(root or "/nonexistent-steam")
         self.steam = mock.Mock()
+        self.http = mock.Mock()
         self.steam.add_to.return_value = {"appid": 3000000000, "existed": False}
         self.data = self.Data()
         ctx = self
@@ -101,8 +102,8 @@ class BackendTest(unittest.TestCase):
         backend = load_backend()
         backend.setup(FakeCtx())
         self.assertEqual(set(backend.METHODS), {
-            "build", "language", "compatdata_dir", "add_to_steam", "game_info", "profiles", "clean_scan",
-            "clean_delete"})
+            "build", "language", "compatdata_dir", "add_to_steam", "game_info", "enrich", "open_page", "profiles",
+            "clean_scan", "clean_delete"})
 
     def test_language(self):
         backend = load_backend()
@@ -145,6 +146,73 @@ class BackendTest(unittest.TestCase):
         ctx.steam.add_to.assert_called_once_with("My Game & Co", "/games/My Game & Co.exe")
         with self.assertRaises(FakeCtx.InvalidArgument):
             backend.add_to_steam(None)
+
+    ANSWERS = {
+        "steamspy.com": {"positive": 90, "negative": 10},
+        "store.steampowered.com/api/appdetails": {"7": {"success": True, "data": {"metacritic": {"score": 80}}}},
+        "www.protondb.com": {"tier": "gold", "total": 3},
+        "store.steampowered.com/api/storesearch": {"items": [{"type": "app", "id": 7, "name": "Seven"}]},
+    }
+
+    def _answer(self, url):
+        return next(v for k, v in self.ANSWERS.items() if k in url)
+
+    def test_enrich_steam_game(self):
+        backend = load_backend()
+        ctx = FakeCtx()
+        backend.setup(ctx)
+        ctx.http.get_json.side_effect = self._answer
+        out = backend.enrich("7", "Seven", False)
+        self.assertEqual(out["steam"]["percent"], 90)
+        self.assertEqual(out["metacritic"]["score"], 80)
+        self.assertEqual(out["protondb"], {"tier": "gold", "total": 3})
+        self.assertIsNone(out["match"])
+        self.assertEqual(out["protondb_url"], "https://www.protondb.com/app/7")
+        self.assertEqual(ctx.http.get_json.call_count, 3)
+        self.assertIs(backend.enrich("7", "Seven", False), out)  # kept for this run
+        self.assertEqual(ctx.http.get_json.call_count, 3)
+        for bad in ("../1", "x", None):
+            with self.assertRaises(FakeCtx.InvalidArgument):
+                backend.enrich(bad)
+
+    def test_enrich_shortcut_is_looked_up_by_name(self):
+        backend = load_backend()
+        ctx = FakeCtx()
+        backend.setup(ctx)
+        ctx.http.get_json.side_effect = self._answer
+        out = backend.enrich("3000000000", "Seven & Co", True)
+        self.assertEqual(out["match"], {"appid": "7", "name": "Seven"})
+        self.assertEqual(out["metacritic"]["score"], 80)
+        self.assertIn("storesearch/?term=Seven%20%26%20Co", ctx.http.get_json.call_args_list[0].args[0])
+        self.assertEqual(out["protondb_url"], "https://www.protondb.com/search?q=Seven%20%26%20Co")
+
+    def test_enrich_a_failing_source_is_left_out_and_not_kept(self):
+        backend = load_backend()
+        ctx = FakeCtx()
+        backend.setup(ctx)
+
+        def answer(url):
+            if "protondb" in url:
+                raise FakeCtx.Unavailable("offline")
+            return self._answer(url)
+        ctx.http.get_json.side_effect = answer
+        out = backend.enrich("7", "Seven", False)
+        self.assertIsNone(out["protondb"])
+        self.assertEqual(out["steam"]["percent"], 90)
+        backend.enrich("7", "Seven", False)
+        self.assertEqual(ctx.http.get_json.call_count, 6)  # asked again
+
+    def test_open_page_only_opens_the_enrichers_pages(self):
+        backend = load_backend()
+        ctx = FakeCtx()
+        backend.setup(ctx)
+        self.assertTrue(backend.open_page("https://www.protondb.com/app/7"))
+        backend.open_page("https://howlongtobeat.com/?q=x")
+        self.assertEqual(ctx.steam.open_url.call_count, 2)
+        for bad in ("https://evil.example/", "https://www.protondb.com.evil/", "http://howlongtobeat.com/", None):
+            with self.assertRaises(FakeCtx.InvalidArgument):
+                backend.open_page(bad)
+        self.assertEqual(ctx.steam.open_url.call_count, 2)
 
     def test_compatdata_dir(self):
         backend = load_backend()

@@ -25,6 +25,12 @@ function defaults() {
 }
 type State = ReturnType<typeof defaults>;
 
+/** Copies text and says whether it worked. */
+export async function copyToast(ctx: ModuleCtx, t: Strings, text: string) {
+  const ok = await ctx.copy(text);
+  ctx.toast(ok ? t.copied : t.copyFailed, ok ? "ok" : "error");
+}
+
 export async function launcher(el: HTMLElement, ctx: ModuleCtx, t: Strings) {
   const profiles = await ctx.call<Profiles>("profiles").catch((): Profiles => ({ mako: [], lsfg: [] }));
   // The profile an option starts with: "default" when the program has it (or when there's no list), else its first.
@@ -66,8 +72,7 @@ export async function launcher(el: HTMLElement, ctx: ModuleCtx, t: Strings) {
 
   async function doCopy() {
     if (!command) return ctx.toast(t.nothing, "error");
-    if (await ctx.copy(command)) ctx.toast(t.copied, "ok");
-    else ctx.toast(t.copyFailed, "error");
+    await copyToast(ctx, t, command);
   }
 
   const toggle = (label: string, get: () => boolean, set: (v: boolean) => void, hint?: string) =>
@@ -146,7 +151,7 @@ export async function launcher(el: HTMLElement, ctx: ModuleCtx, t: Strings) {
   const fsr4Indicator = toggle(t.fsr4Indicator, () => s().fsr4Indicator, (v) => (s().fsr4Indicator = v));
   const fpsValue = track(
     ui.number({
-      label: t.fps, value: 30, min: 0, max: 240, step: 1,
+      label: t.fps, value: s().fpsLimit.value, min: 0, max: 240, step: 1,
       onChange: (v) => ((s().fpsLimit.value = v), change()),
     }),
     () => s().fpsLimit.value,

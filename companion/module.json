@@ -3,7 +3,7 @@
   "name": "Companion",
   "version": "0.3.0",
   "author": "FranjeGueje",
-  "description": "Builds a game's Steam launch options and copies them, adds files to Steam as non-Steam games and shows everything Steam knows about the current game, and cleans the leftovers of games that are gone.",
+  "description": "Builds a game's Steam launch options and copies them, adds files to Steam as non-Steam games and shows everything Steam knows about the current game with its scores (Steam, Metacritic, ProtonDB) and links to ProtonDB and HowLongToBeat, and cleans the leftovers of games that are gone.",
   "tab": "Compa",
   "no_qam": true,
   "min_core": "0.3.0"

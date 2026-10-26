@@ -4,9 +4,7 @@ import re
 import shutil
 from pathlib import Path
 
-from . import gameinfo
-
-vdf = None  # the core's ctx.vdf, set by backend.setup
+from . import gameinfo  # also its vdf: the core's ctx.vdf, set by backend.setup
 
 PREFIX_DIRS = ("compatdata", "shadercache")
 LEADING_ID = re.compile(r"^(\d+)")
@@ -36,7 +34,7 @@ def _shortcut_names(steam_root):
 
 def _installed_names(libraries):
     """{appid: name} of the installed games."""
-    ids = {}
+    vdf, ids = gameinfo.vdf, {}
     for lib in libraries:
         for acf in Path(lib).glob("appmanifest_*.acf"):
             try:

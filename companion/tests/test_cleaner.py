@@ -7,7 +7,7 @@ from invasor import vdf  # the core, found by tests/__init__.py
 
 from companion import cleaner
 
-cleaner.vdf = cleaner.gameinfo.vdf = vdf
+cleaner.gameinfo.vdf = vdf
 
 
 def shortcuts_vdf(appid):
