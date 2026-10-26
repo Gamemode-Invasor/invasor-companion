@@ -1,5 +1,4 @@
 import { ui, type ModuleCtx } from "invasor";
-import { copyText, openBrowser } from "./common";
 import type { Strings } from "./texts";
 
 interface Warning { code: string; name?: string }
@@ -25,6 +24,12 @@ function defaults() {
   };
 }
 type State = ReturnType<typeof defaults>;
+
+/** Copies text and says whether it worked. */
+export async function copyToast(ctx: ModuleCtx, t: Strings, text: string) {
+  const ok = await ctx.copy(text);
+  ctx.toast(ok ? t.copied : t.copyFailed, ok ? "ok" : "error");
+}
 
 export async function launcher(el: HTMLElement, ctx: ModuleCtx, t: Strings) {
   const profiles = await ctx.call<Profiles>("profiles").catch((): Profiles => ({ mako: [], lsfg: [] }));
@@ -67,8 +72,7 @@ export async function launcher(el: HTMLElement, ctx: ModuleCtx, t: Strings) {
 
   async function doCopy() {
     if (!command) return ctx.toast(t.nothing, "error");
-    if (await copyText(command)) ctx.toast(t.copied, "ok");
-    else ctx.toast(t.copyFailed, "error");
+    await copyToast(ctx, t, command);
   }
 
   const toggle = (label: string, get: () => boolean, set: (v: boolean) => void, hint?: string) =>
@@ -78,20 +82,18 @@ export async function launcher(el: HTMLElement, ctx: ModuleCtx, t: Strings) {
 
   const prefixLabel = ui.info("");
   const paintPrefix = () => (prefixLabel.textContent = state.prefix.path);
-  // openWindow returns null (and tells the user why) where there's no room, e.g. the Quick Access in a game.
+  // pickPath answers null (and tells the user why) where there's no room, e.g. the Quick Access in a game.
   const chooseFolder = ui.button({
     label: t.chooseFolder,
-    onClick: () =>
-      void openBrowser(ctx, t, {
-        title: t.chooseFolderMsg,
-        files: false,
-        start: state.prefix.path || undefined,
-        onPick: (path) => {
-          state.prefix.path = path;
-          paintPrefix();
-          change();
-        },
-      }),
+    onClick: async () => {
+      const start = state.prefix.path || (await ctx.call<string | null>("compatdata_dir")) || undefined;
+      const path = await ctx.pickPath({ title: t.chooseFolderMsg, start, chooseLabel: t.chooseThis });
+      if (path) {
+        state.prefix.path = path;
+        paintPrefix();
+        change();
+      }
+    },
   });
 
   function drawCustom() {
@@ -149,7 +151,7 @@ export async function launcher(el: HTMLElement, ctx: ModuleCtx, t: Strings) {
   const fsr4Indicator = toggle(t.fsr4Indicator, () => s().fsr4Indicator, (v) => (s().fsr4Indicator = v));
   const fpsValue = track(
     ui.number({
-      label: t.fps, value: 30, min: 0, max: 240, step: 1,
+      label: t.fps, value: s().fpsLimit.value, min: 0, max: 240, step: 1,
       onChange: (v) => ((s().fpsLimit.value = v), change()),
     }),
     () => s().fpsLimit.value,

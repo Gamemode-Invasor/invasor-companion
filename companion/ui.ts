@@ -1,30 +1,16 @@
 import { currentGame, defineModule, ui, type ModuleCtx } from "invasor";
-import { copyText, openBrowser } from "./common";
-import { launcher } from "./launcher";
+import { copyToast, launcher } from "./launcher";
 import { T, type Lang, type Strings } from "./texts";
 
 function addTo(el: HTMLElement, ctx: ModuleCtx, t: Strings) {
   let file = "";
   const path = ui.info("");
-  // Bumped on every send and every new file, so an older wait for Steam's dialog stops.
-  let run = 0;
   const add = ui.button({
     label: t.addToSteam,
     onClick: async () => {
-      const mine = ++run;
-      const target = file;
       try {
-        const sent = await ctx.call<{ already: boolean }>("add_to_steam", { path: target });
-        if (sent.already) return ctx.toast(t.alreadyInSteam, "ok");
-        ctx.toast(t.sentToSteam, "ok");
-        // Steam adds it only after the user confirms its dialog: wait for it to show up in shortcuts.vdf.
-        for (let waited = 0; waited < 60_000 && mine === run; waited += 1500) {
-          await new Promise((r) => setTimeout(r, 1500));
-          if (mine === run && (await ctx.call<boolean>("is_added", { path: target }))) {
-            return ctx.toast(t.addedToSteam, "ok");
-          }
-        }
-        if (mine === run) ctx.toast(t.notAddedInTime, "error");
+        const out = await ctx.call<{ appid: number; existed: boolean }>("add_to_steam", { path: file });
+        ctx.toast(out.existed ? t.alreadyInSteam : t.addedToSteam, "ok");
       } catch (e) {
         ctx.toast(`${t.addFailed}: ${e instanceof Error ? e.message : e}`, "error");
       }
@@ -37,16 +23,13 @@ function addTo(el: HTMLElement, ctx: ModuleCtx, t: Strings) {
   };
   const choose = ui.button({
     label: t.chooseFile,
-    onClick: () =>
-      void openBrowser(ctx, t, {
-        title: t.chooseFileMsg,
-        files: true,
-        onPick: (p) => {
-          run++;
-          file = p;
-          paint();
-        },
-      }),
+    onClick: async () => {
+      const picked = await ctx.pickPath({ title: t.chooseFileMsg, files: true });
+      if (picked) {
+        file = picked;
+        paint();
+      }
+    },
   });
   paint();
   el.append(choose, path, add);
@@ -55,6 +38,7 @@ function addTo(el: HTMLElement, ctx: ModuleCtx, t: Strings) {
 interface CleanItem { path: string; appid: string; name: string; size: number; kind?: string }
 interface CleanScan { prefixes: CleanItem[]; grids: CleanItem[] }
 
+const locale = (lang: Lang) => (lang === "es" ? "es-ES" : "en-GB");
 const formatSize = (n: number) => (n >= 1e9 ? `${(n / 1e9).toFixed(2)} GB` : `${(n / 1e6).toFixed(1)} MB`);
 
 // Cleaning: orphan compatdata/shadercache and unused grid images, picked one by one (all marked) and deleted.
@@ -129,9 +113,9 @@ function gameValue(r: GameRow, t: Strings, lang: Lang): string {
   const n = Number(r.value);
   switch (r.type) {
     case "bytes":
-      return n >= 1e9 ? `${(n / 1e9).toFixed(2)} GB` : `${(n / 1e6).toFixed(1)} MB`;
+      return formatSize(n);
     case "timestamp":
-      return new Date(n * 1000).toLocaleString(lang === "es" ? "es-ES" : "en-GB");
+      return new Date(n * 1000).toLocaleString(locale(lang));
     case "minutes": {
       const h = Math.floor(n / 60);
       return h ? `${h} ${t.unit_h} ${n % 60} ${t.unit_min}` : `${n} ${t.unit_min}`;
@@ -150,11 +134,6 @@ function gameValue(r: GameRow, t: Strings, lang: Lang): string {
     default:
       return String(r.value);
   }
-}
-
-async function copyToast(ctx: ModuleCtx, t: Strings, text: string) {
-  const ok = await copyText(text);
-  ctx.toast(ok ? t.copied : t.copyFailed, ok ? "ok" : "error");
 }
 
 // Every row is a navigation stop (so the gamepad can scroll through them): A copies its value.
@@ -178,10 +157,63 @@ function gameRow(ctx: ModuleCtx, t: Strings, lang: Lang, r: GameRow): HTMLElemen
   return el;
 }
 
+interface Enriched {
+  steam: { rating: string; percent: number; total: number; steamdb: number | null } | null;
+  metacritic: { score: number; url: string | null } | null;
+  protondb: { tier: string; total: number } | null;
+  match: { appid: string; name: string } | null;
+  protondb_url: string;
+  hltb_url: string;
+}
+
+// Bumped on every refresh of the Game tab, so a slow answer for the previous game is dropped.
+let enrichSeq = 0;
+
+// The enrichers: a button under the title that asks for the scores and the pages to look further.
+function enrichers(ctx: ModuleCtx, t: Strings, lang: Lang, info: GameInfo): HTMLElement {
+  const text = t as Record<string, string>;
+  const box = document.createElement("div");
+  const num = (n: number, digits = 0) => n.toLocaleString(locale(lang), { maximumFractionDigits: digits });
+  const row = (key: string, value: string) => gameRow(ctx, t, lang, { key, value, type: "text" });
+  const open = (url: string) => () =>
+    void ctx.call("open_page", { url }).catch((e) => ctx.toast(`${t.openFailed}: ${e instanceof Error ? e.message : e}`, "error"));
+  const show = async () => {
+    const mine = enrichSeq;
+    box.replaceChildren(ui.info(t.enrichLoading));
+    let e: Enriched;
+    try {
+      e = await ctx.call<Enriched>("enrich", { appid: info.appid, name: info.name ?? "", shortcut: info.kind === "shortcut" });
+    } catch (err) {
+      if (mine === enrichSeq) box.replaceChildren(button, ui.info(`${t.enrichFailed}: ${err instanceof Error ? err.message : err}`));
+      return;
+    }
+    if (mine !== enrichSeq) return;
+    const rows: HTMLElement[] = [];
+    if (e.match) rows.push(row("matched", e.match.name || e.match.appid));
+    if (e.steam) {
+      const parts = [text[`rv_${e.steam.rating}`] ?? e.steam.rating, `${e.steam.percent} %`, `${num(e.steam.total)} ${t.reviews}`];
+      if (e.steam.steamdb !== null) parts.push(`SteamDB ${num(e.steam.steamdb, 1)}`);
+      rows.push(row("score_steam", parts.join(" · ")));
+    }
+    if (e.metacritic) rows.push(row("score_metacritic", String(e.metacritic.score)));
+    if (e.protondb) rows.push(row("score_protondb", `${text[`pdb_${e.protondb.tier}`] ?? e.protondb.tier} (${num(e.protondb.total)} ${t.reports})`));
+    if (!rows.length) rows.push(ui.info(t.enrichNone));
+    box.replaceChildren(
+      ...rows,
+      ui.button({ label: t.openProtonDb, onClick: open(e.protondb_url) }),
+      ui.button({ label: t.openHltb, onClick: open(e.hltb_url) }),
+    );
+  };
+  const button = ui.button({ label: t.enrichers, onClick: () => void show() });
+  box.append(button);
+  return box;
+}
+
 // The Game tab: what Steam's files say about the current game. Returns the function that re-reads it.
 function gameTab(el: HTMLElement, ctx: ModuleCtx, t: Strings, lang: Lang): () => Promise<void> {
   const body = document.createElement("div");
   async function refresh() {
+    enrichSeq++;
     const current = currentGame(ctx.game());
     const appid = current?.game.appid ?? "";
     if (!appid) return void body.replaceChildren(ui.info(t.gameNone));
@@ -200,7 +232,7 @@ function gameTab(el: HTMLElement, ctx: ModuleCtx, t: Strings, lang: Lang): () =>
         { open: false },
       ),
     );
-    body.replaceChildren(title, kind, ...groups);
+    body.replaceChildren(title, kind, enrichers(ctx, t, lang, info), ...groups);
   }
   el.append(body);
   void refresh();
@@ -215,30 +247,37 @@ function credits(el: HTMLElement, t: Strings) {
 
 let refreshGame: (() => Promise<void>) | null = null;
 
+// Steam's language, asked once for every tab (English if it can't be told).
+let language: Promise<Lang> | null = null;
+async function strings(ctx: ModuleCtx): Promise<[Lang, Strings]> {
+  language ??= ctx.call<Lang>("language").catch((): Lang => "en");
+  const lang = await language;
+  return [lang, T[lang] ?? T.en];
+}
+
 export default defineModule({
   tabsAlign: "justify",
   onGameChange: () => void refreshGame?.(),
   tabs: [
     {
-      label: "Lanzador",
+      label: "Launcher",
       async render(el, ctx) {
-        const lang = await ctx.call<Lang>("language");
-        await launcher(el, ctx, T[lang] ?? T.en);
+        const [, t] = await strings(ctx);
+        await launcher(el, ctx, t);
       },
     },
     {
       label: "Game",
       async render(el, ctx) {
-        const lang = await ctx.call<Lang>("language");
-        refreshGame = gameTab(el, ctx, T[lang] ?? T.en, lang);
+        const [lang, t] = await strings(ctx);
+        refreshGame = gameTab(el, ctx, t, lang);
       },
       onShow: () => void refreshGame?.(),
     },
     {
       label: "Steam",
       async render(el, ctx) {
-        const lang = await ctx.call<Lang>("language");
-        const t = T[lang] ?? T.en;
+        const [, t] = await strings(ctx);
         addTo(el, ctx, t);
         const clean = document.createElement("div");
         cleaning(clean, ctx, t);
@@ -246,10 +285,10 @@ export default defineModule({
       },
     },
     {
-      label: "Créditos",
+      label: "Credits",
       async render(el, ctx) {
-        const lang = await ctx.call<Lang>("language");
-        credits(el, T[lang] ?? T.en);
+        const [, t] = await strings(ctx);
+        credits(el, t);
       },
     },
   ],
