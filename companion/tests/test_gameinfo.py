@@ -18,8 +18,10 @@ def load(name):
     return importlib.import_module(f"{pkg}.{name}")
 
 
-kv = load("kv")
+from invasor import vdf  # noqa: E402  (the core, found by tests/__init__.py)
+
 gameinfo = load("gameinfo")
+gameinfo.vdf = vdf
 
 CONFIG = '"InstallConfigStore" { "Software" { "Valve" { "Steam" { "CompatToolMapping" { "0" { "name" "proton_experimental" } "100" { "name" "GE-Proton" } } } } } }'
 MANIFEST = """"AppState"
@@ -71,27 +73,6 @@ def rows(info):
     return {g["id"]: {r["key"]: r for r in g["rows"]} for g in info["groups"]}
 
 
-class KvTest(unittest.TestCase):
-    def test_text(self):
-        d = kv.loads_text('"A" { "b" "x \\"q\\"" "C" { "d" "1" } }')
-        self.assertEqual(kv.get(d, "a", "B"), 'x "q"')
-        self.assertEqual(kv.get(d, "a", "c", "d"), "1")
-        self.assertIsNone(kv.get(d, "a", "zz"))
-
-    def test_binary(self):
-        out = kv.loads_binary(shortcut_vdf(7, AppName="Thing"))
-        self.assertEqual(out["shortcuts"]["0"]["AppName"], "Thing")
-        with self.assertRaises(ValueError):
-            kv.loads_binary(b"\x00shortcuts\x00\x01x")
-        with self.assertRaises(ValueError):  # nested beyond reason: an error, not a crash
-            kv.loads_binary(b"\x00a\x00" * 5000)
-
-    def test_text_block_without_a_name(self):
-        d = kv.loads_text('{ "x" "y" } "A" { "b" "1" }')
-        self.assertEqual(kv.get(d, "a", "b"), "1")
-        self.assertEqual(list(d), ["A"])
-
-
 class SteamGameTest(unittest.TestCase):
     def test_steam_game(self):
         with tempfile.TemporaryDirectory() as d:
@@ -110,6 +91,11 @@ class SteamGameTest(unittest.TestCase):
             self.assertEqual(r["compat"]["tool"]["value"], "GE-Proton")
             self.assertEqual(r["compat"]["prefix"]["value"], str(t.root / "steamapps/compatdata/100"))
             self.assertEqual(r["compat"]["prefix_override"]["value"], "/x y/compat")
+            # Steam's own answer wins over localconfig.vdf, which lags behind it; "" is "none".
+            r = rows(t.info(100, launch_options="-novid %command%"))
+            self.assertEqual(r["play"]["launch_options"]["value"], "-novid %command%")
+            self.assertNotIn("prefix_override", r["compat"])
+            self.assertNotIn("launch_options", rows(t.info(100, launch_options=""))["play"])
             self.assertEqual(r["links"]["store"]["value"], "https://store.steampowered.com/app/100")
             self.assertNotIn("shortcut", r)
 

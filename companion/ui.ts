@@ -1,30 +1,16 @@
 import { currentGame, defineModule, ui, type ModuleCtx } from "invasor";
-import { copyText, openBrowser } from "./common";
 import { launcher } from "./launcher";
 import { T, type Lang, type Strings } from "./texts";
 
 function addTo(el: HTMLElement, ctx: ModuleCtx, t: Strings) {
   let file = "";
   const path = ui.info("");
-  // Bumped on every send and every new file, so an older wait for Steam's dialog stops.
-  let run = 0;
   const add = ui.button({
     label: t.addToSteam,
     onClick: async () => {
-      const mine = ++run;
-      const target = file;
       try {
-        const sent = await ctx.call<{ already: boolean }>("add_to_steam", { path: target });
-        if (sent.already) return ctx.toast(t.alreadyInSteam, "ok");
-        ctx.toast(t.sentToSteam, "ok");
-        // Steam adds it only after the user confirms its dialog: wait for it to show up in shortcuts.vdf.
-        for (let waited = 0; waited < 60_000 && mine === run; waited += 1500) {
-          await new Promise((r) => setTimeout(r, 1500));
-          if (mine === run && (await ctx.call<boolean>("is_added", { path: target }))) {
-            return ctx.toast(t.addedToSteam, "ok");
-          }
-        }
-        if (mine === run) ctx.toast(t.notAddedInTime, "error");
+        const out = await ctx.call<{ appid: number; existed: boolean }>("add_to_steam", { path: file });
+        ctx.toast(out.existed ? t.alreadyInSteam : t.addedToSteam, "ok");
       } catch (e) {
         ctx.toast(`${t.addFailed}: ${e instanceof Error ? e.message : e}`, "error");
       }
@@ -37,16 +23,13 @@ function addTo(el: HTMLElement, ctx: ModuleCtx, t: Strings) {
   };
   const choose = ui.button({
     label: t.chooseFile,
-    onClick: () =>
-      void openBrowser(ctx, t, {
-        title: t.chooseFileMsg,
-        files: true,
-        onPick: (p) => {
-          run++;
-          file = p;
-          paint();
-        },
-      }),
+    onClick: async () => {
+      const picked = await ctx.pickPath({ title: t.chooseFileMsg, files: true });
+      if (picked) {
+        file = picked;
+        paint();
+      }
+    },
   });
   paint();
   el.append(choose, path, add);
@@ -153,7 +136,7 @@ function gameValue(r: GameRow, t: Strings, lang: Lang): string {
 }
 
 async function copyToast(ctx: ModuleCtx, t: Strings, text: string) {
-  const ok = await copyText(text);
+  const ok = await ctx.copy(text);
   ctx.toast(ok ? t.copied : t.copyFailed, ok ? "ok" : "error");
 }
 

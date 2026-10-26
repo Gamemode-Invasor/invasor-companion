@@ -1,10 +1,8 @@
 import importlib.util
 import logging
-import subprocess
 import sys
 import tempfile
 import tomllib
-import urllib.parse
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -23,8 +21,45 @@ def load_backend():
     return mod
 
 
+from invasor import vdf as core_vdf  # noqa: E402  (the core, found by tests/__init__.py)
+
+
 class FakeCtx:
     log = logging.getLogger("test.companion")
+    vdf = core_vdf
+    language = "english"
+
+    def __init__(self, root=None):
+        self.root = Path(root or "/nonexistent-steam")
+        self.steam = mock.Mock()
+        self.steam.add_to.return_value = {"appid": 3000000000, "existed": False}
+        self.data = self.Data()
+        ctx = self
+
+        class paths:
+            @staticmethod
+            def steam_root():
+                return ctx.root
+
+            @staticmethod
+            def libraries():
+                lib = ctx.root / "steamapps"
+                return [lib] if lib.is_dir() else []
+
+        self.paths = paths
+
+    def steam_language(self):
+        return {"spanish": "es", "latam": "es", "english": "en"}.get(self.language, "de")
+
+    class Data:
+        def __init__(self):
+            self.stored = {}
+
+        def load(self):
+            return dict(self.stored)
+
+        def update(self, **kw):
+            self.stored.update(kw)
 
     class InvalidArgument(Exception):
         pass
@@ -66,8 +101,16 @@ class BackendTest(unittest.TestCase):
         backend = load_backend()
         backend.setup(FakeCtx())
         self.assertEqual(set(backend.METHODS), {
-            "build", "language", "browse", "add_to_steam", "is_added", "game_info", "profiles", "clean_scan",
+            "build", "language", "compatdata_dir", "add_to_steam", "game_info", "profiles", "clean_scan",
             "clean_delete"})
+
+    def test_language(self):
+        backend = load_backend()
+        ctx = FakeCtx()
+        backend.setup(ctx)
+        for steam, lang in (("spanish", "es"), ("latam", "es"), ("english", "en"), ("german", "en")):
+            ctx.language = steam
+            self.assertEqual(backend.language(), lang)
 
     def test_profiles(self):
         backend = load_backend()
@@ -93,74 +136,39 @@ class BackendTest(unittest.TestCase):
         out = backend.build({"mako": {"on": True, "profile": "p"}})["command"]
         self.assertTrue(out.endswith("/.local/bin/mako-launch %command%"))
 
-    def _ready(self, d):
-        backend = load_backend()
-        backend.setup(FakeCtx())
-        exe = Path(d) / "My Game & Co.exe"
-        exe.write_text("x")
-        backend.MARKER = Path(d) / "marker"
-        return backend, exe
-
-    def _run(self, backend, path, added=False, **run_kw):
-        run_kw = run_kw or {"return_value": mock.Mock(returncode=0, stderr="")}
-        with mock.patch.object(backend.steam, "shortcut_added", return_value=added), \
-                mock.patch.object(backend.steam, "session_env", return_value={"WAYLAND_DISPLAY": "wayland-0"}), \
-                mock.patch.object(backend.subprocess, "run", **run_kw) as run:
-            return run, backend.add_to_steam(path)
-
     def test_add_to_steam(self):
-        with tempfile.TemporaryDirectory() as d:
-            backend, exe = self._ready(d)
-            backend.MARKER.write_text("old")
-            run, out = self._run(backend, str(exe))
-            self.assertEqual(out, {"ok": True, "already": False})
-            self.assertEqual(backend.MARKER.read_text(), "")
-            url = "steam://addnonsteamgame/" + urllib.parse.quote(str(exe), safe="")
-            self.assertEqual(run.call_args.args[0], ["xdg-open", url])
-            self.assertEqual(run.call_args.kwargs["env"]["WAYLAND_DISPLAY"], "wayland-0")
-            self.assertIn("/usr/bin", run.call_args.kwargs["env"]["PATH"])
-            self.assertNotIn("shell", run.call_args.kwargs)
-
-    def test_add_to_steam_already_there(self):
-        with tempfile.TemporaryDirectory() as d:
-            backend, exe = self._ready(d)
-            run, out = self._run(backend, str(exe), added=True)
-            self.assertEqual(out, {"ok": True, "already": True})
-            run.assert_not_called()
-
-    def test_add_to_steam_rejects_bad_paths(self):
-        with tempfile.TemporaryDirectory() as d:
-            backend, _ = self._ready(d)
-            for bad in ("relative.exe", str(Path(d) / "missing.exe"), d, None):
-                with mock.patch.object(backend.subprocess, "run") as run:
-                    with self.assertRaises(FakeCtx.InvalidArgument):
-                        backend.add_to_steam(bad)
-                    with self.assertRaises(FakeCtx.InvalidArgument):
-                        backend.is_added(bad)
-                run.assert_not_called()
-
-    def test_add_to_steam_failures(self):
-        with tempfile.TemporaryDirectory() as d:
-            backend, exe = self._ready(d)
-            with self.assertRaises(FakeCtx.Unavailable):
-                self._run(backend, str(exe), side_effect=FileNotFoundError("xdg-open"))
-            bad = mock.Mock(returncode=3, stderr="no handler")
-            with self.assertRaisesRegex(FakeCtx.Unavailable, "no handler"):
-                self._run(backend, str(exe), return_value=bad)
-            _, out = self._run(backend, str(exe), side_effect=subprocess.TimeoutExpired("xdg-open", 10))
-            self.assertTrue(out["ok"])
-
-    def test_is_added(self):
-        with tempfile.TemporaryDirectory() as d:
-            backend, exe = self._ready(d)
-            with mock.patch.object(backend.steam, "shortcut_added", return_value=True):
-                self.assertTrue(backend.is_added(str(exe)))
-
-    def test_browse_home_and_files(self):
         backend = load_backend()
-        backend.setup(FakeCtx())
-        out = backend.browse("/nonexistent-companion-dir", files=True, home=True)
-        self.assertEqual(out["path"], str(Path.home().resolve()))
+        ctx = FakeCtx()
+        backend.setup(ctx)
+        out = backend.add_to_steam("/games/My Game & Co.exe")
+        self.assertEqual(out, {"appid": 3000000000, "existed": False})
+        ctx.steam.add_to.assert_called_once_with("My Game & Co", "/games/My Game & Co.exe")
+        with self.assertRaises(FakeCtx.InvalidArgument):
+            backend.add_to_steam(None)
+
+    def test_compatdata_dir(self):
+        backend = load_backend()
+        with tempfile.TemporaryDirectory() as d:
+            ctx = FakeCtx(d)
+            backend.setup(ctx)
+            self.assertIsNone(backend.compatdata_dir())
+            (Path(d) / "steamapps/compatdata").mkdir(parents=True)
+            self.assertEqual(backend.compatdata_dir(), str(Path(d) / "steamapps/compatdata"))
+
+    def test_names_move_from_the_old_file_to_ctx_data(self):
+        backend = load_backend()
+        ctx = FakeCtx()
+        backend.setup(ctx)
+        with tempfile.TemporaryDirectory() as d:
+            backend.OLD_NAMES_FILE = Path(d) / "companion/names.json"
+            self.assertEqual(backend._load_names(), {})
+            backend.OLD_NAMES_FILE.parent.mkdir()
+            backend.OLD_NAMES_FILE.write_text('{"10": "Old", "11": 5}')
+            self.assertEqual(backend._load_names(), {"10": "Old"})
+            backend._save_names({"10": "Old", "12": "New"})
+            self.assertEqual(ctx.data.stored, {"names": {"10": "Old", "12": "New"}})
+            self.assertFalse(backend.OLD_NAMES_FILE.parent.exists())
+            self.assertEqual(backend._load_names(), {"10": "Old", "12": "New"})
 
     def test_names_are_refreshed_on_steam_start(self):
         backend = load_backend()
@@ -169,7 +177,7 @@ class BackendTest(unittest.TestCase):
         self.assertIs(ctx.events.handlers["steam_start"], backend.refresh_names)
         with mock.patch.object(backend.cleaner, "remember_names", return_value=(set(), {"1": "A"})) as remember:
             backend.refresh_names({})
-            self.assertIs(remember.call_args.kwargs["save_names"], backend._save_names)
+            self.assertIs(remember.call_args.args[3], backend._save_names)
         with mock.patch.object(backend.cleaner, "remember_names", side_effect=OSError("x")):
             backend.refresh_names()  # a failure is logged, not raised
 
@@ -187,10 +195,15 @@ class BackendTest(unittest.TestCase):
         backend.setup(ctx)
         with mock.patch.object(backend.gameinfo, "game_info", return_value={"ok": 1}) as info:
             self.assertEqual(backend.game_info(), {"ok": 1})
-            self.assertEqual(info.call_args.args, ("42",))
-            self.assertEqual(info.call_args.kwargs, {"name": "Game 42", "shortcut": None})
+            self.assertEqual(info.call_args.args, ("42", ctx.root, []))
+            self.assertEqual(info.call_args.kwargs["name"], "Game 42")
+            self.assertIs(info.call_args.kwargs["launch_options"], ctx.steam.launch_options.return_value)
+            ctx.steam.launch_options.side_effect = FakeCtx.Unavailable("no Steam")
+            backend.game_info("42")
+            self.assertIsNone(info.call_args.kwargs["launch_options"])  # the files then
+            ctx.steam.launch_options.side_effect = None
             backend.game_info("7")
-            self.assertEqual(info.call_args.args, ("7",))
+            self.assertEqual(info.call_args.args[0], "7")
         for bad in ("../../etc", "12a", "-1", "1/2", "\u0661"):
             with self.assertRaises(FakeCtx.InvalidArgument):
                 backend.game_info(bad)

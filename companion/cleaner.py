@@ -4,7 +4,9 @@ import re
 import shutil
 from pathlib import Path
 
-from . import kv, steam
+from . import gameinfo
+
+vdf = None  # the core's ctx.vdf, set by backend.setup
 
 PREFIX_DIRS = ("compatdata", "shadercache")
 LEADING_ID = re.compile(r"^(\d+)")
@@ -29,17 +31,7 @@ def _size(path):
 
 def _shortcut_names(steam_root):
     """{appid: name} of the non-Steam shortcuts."""
-    ids = {}
-    for f in Path(steam_root).glob("userdata/*/config/shortcuts.vdf"):
-        try:
-            shortcuts = kv.loads_binary(f.read_bytes()).get("shortcuts", {})
-        except (OSError, ValueError):
-            continue
-        for entry in shortcuts.values():
-            low = {k.lower(): v for k, v in entry.items()}
-            if isinstance(low.get("appid"), int):
-                ids[str(low["appid"] & 0xFFFFFFFF)] = str(low.get("appname") or "")
-    return ids
+    return {appid: str(e.get("appname") or "") for appid, e in gameinfo.shortcuts(steam_root).items()}
 
 
 def _installed_names(libraries):
@@ -48,11 +40,11 @@ def _installed_names(libraries):
     for lib in libraries:
         for acf in Path(lib).glob("appmanifest_*.acf"):
             try:
-                state = kv.get(kv.loads_text(acf.read_text(errors="replace")), "AppState", default={})
+                state = vdf.get(vdf.loads_text(acf.read_text(errors="replace")), "AppState", default={})
             except OSError:
                 continue
-            if kv.get(state, "appid"):
-                ids[str(kv.get(state, "appid"))] = str(kv.get(state, "name") or "")
+            if vdf.get(state, "appid"):
+                ids[str(vdf.get(state, "appid"))] = str(vdf.get(state, "name") or "")
     return ids
 
 
@@ -69,12 +61,11 @@ def _prefix_folders(libraries):
                     yield Path(lib), kind, Path(e.path)
 
 
-def remember_names(steam_root=steam.STEAM_ROOT, libraries=None, names=None, save_names=None):
+def remember_names(steam_root, libraries, names=None, save_names=None):
     """Adds the installed games and shortcuts to the {appid: name} cache; save_names(names) stores it if it grew.
 
     Returns (known ids, names): the apps that exist now and everything the cache knows.
     """
-    libraries = steam.libraries(steam_root) if libraries is None else libraries
     seen = {**_installed_names(libraries), **_shortcut_names(steam_root)}
     names = dict(names or {})
     fresh = {k: v for k, v in seen.items() if v and names.get(k) != v}
@@ -84,7 +75,7 @@ def remember_names(steam_root=steam.STEAM_ROOT, libraries=None, names=None, save
     return set(seen), names
 
 
-def scan(steam_root=steam.STEAM_ROOT, libraries=None, names=None, save_names=None, name_of=lambda appid: None):
+def scan(steam_root, libraries, names=None, save_names=None, name_of=lambda appid: None):
     """{"prefixes": [{"path", "appid", "name", "kind", "library", "size"}], "grids": [{"path", "appid", "name", "size"}]}.
 
     name: what the app was called, from `names` (an {appid: name} cache of every game seen by past scans, which
@@ -93,7 +84,6 @@ def scan(steam_root=steam.STEAM_ROOT, libraries=None, names=None, save_names=Non
     prefixes: compatdata/shadercache folders of an app that is neither installed nor a shortcut.
     grids: images of userdata/*/config/grid whose AppID is not installed, a shortcut or a game with a prefix.
     """
-    libraries = steam.libraries(steam_root) if libraries is None else libraries
     known, names = remember_names(steam_root, libraries, names, save_names)
 
     def name(appid):
@@ -121,7 +111,7 @@ def scan(steam_root=steam.STEAM_ROOT, libraries=None, names=None, save_names=Non
     return {"prefixes": prefixes, "grids": grids}
 
 
-def delete(paths, steam_root=steam.STEAM_ROOT, libraries=None):
+def delete(paths, steam_root, libraries):
     """Deletes the given paths, but only those a fresh scan() lists. {"deleted": [...], "failed": [...]}."""
     found = scan(steam_root, libraries)
     allowed = {item["path"] for item in found["prefixes"] + found["grids"]}

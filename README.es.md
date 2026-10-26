@@ -14,19 +14,17 @@ Opciones de lanzamiento del juego. Añade una pestaña **Compa** (que no aparece
   HelixSR se ha movido al módulo [Opti](https://github.com/Gamemode-Invasor/invasor-opti) (pestaña Opti → Global → Custom DLLs), y la sección de escaladores lo dice donde estaba su interruptor. Lo que instalaron versiones anteriores de Companion no se toca: los juegos con HelixSR Scaler en su prefijo lo conservan, y `~/.local/share/HelixSR/` se puede borrar a mano.
 - **Juego**: todo lo que los archivos de Steam dicen del juego actual (la página abierta; si no, el resaltado; si no, el
   que se está ejecutando), agrupado en secciones: general, instalación (biblioteca, carpeta, tamaño, estado, compilación, actualizaciones), juego (última
-  partida, tiempo de juego, opciones de lanzamiento), compatibilidad (herramienta, prefijo) y, para los accesos directos que no son de Steam, su ejecutable, directorio
+  partida, tiempo de juego, opciones de lanzamiento, que se le piden al propio Steam si responde y si no se leen de sus archivos), compatibilidad (herramienta, prefijo) y, para los accesos directos que no son de Steam, su ejecutable, directorio
   de inicio y etiquetas, además de los enlaces a la tienda y a SteamDB. Al pulsar una fila se copia su valor (también el AppID).
-- **Steam**: elige cualquier archivo (un explorador que empieza en tu carpeta personal, con cualquier extensión) y pulsa *Añadir a Steam*. Le pide
-  a Steam que lo añada como juego que no es de Steam de la forma que Steam admite: crea `/tmp/addnonsteamgamefile` y abre
-  `steam://addnonsteamgame/<ruta codificada>` con `xdg-open`. `xdg-open` se ejecuta con el entorno de la sesión gráfica (el servicio no tiene ninguno) y se comprueba su resultado. Steam muestra su propio diálogo de confirmación; después el módulo espera a que el acceso directo aparezca en `shortcuts.vdf`.
-  Debajo, una sección plegada **Limpieza** lista las carpetas `compatdata`/`shadercache` de juegos que ya no están instalados (en todas las bibliotecas) y las imágenes de `userdata/*/config/grid` que no son de ningún juego ni acceso directo. Todo viene marcado; tú eliges y confirmas, y solo se borran elementos de un análisis recién hecho. Los nombres de los juegos se recuerdan en `~/.local/share/invasor/companion/names.json` (se actualizan en cada inicio de Steam) para que una carpeta sobrante diga qué era.
+- **Steam**: elige cualquier archivo (el selector de archivos de Invasor, que empieza en tu carpeta personal; con cualquier extensión) y pulsa *Añadir a Steam*. Invasor lo añade como juego que no es de Steam con el nombre del archivo (sin la extensión), sin diálogo de confirmación, y Steam muestra una notificación; si ya hay un acceso directo a ese archivo, se deja como está.
+  Debajo, una sección plegada **Limpieza** lista las carpetas `compatdata`/`shadercache` de juegos que ya no están instalados (en todas las bibliotecas) y las imágenes de `userdata/*/config/grid` que no son de ningún juego ni acceso directo. Todo viene marcado; tú eliges y confirmas, y solo se borran elementos de un análisis recién hecho. Los nombres de los juegos se recuerdan en los datos del módulo (`ctx.data`, se actualizan en cada inicio de Steam; el `names.json` de versiones anteriores se pasa ahí y se borra) para que una carpeta sobrante diga qué era.
 - **Créditos**: el autor.
 
 Los textos siguen el idioma de Steam (español o inglés). La lógica es un port del lanzador Companion de
 `../companion`; solo construye el texto y nunca toca los ficheros del juego.
 
 ## Requisitos
-Invasor 0.2.0 o posterior (`min_core`): usa `ctx.events` y `ctx.toml`.
+Invasor 0.3.0 o posterior (`min_core`): usa `ctx.events`, `ctx.toml`, `ctx.data`, `ctx.paths`, `ctx.vdf`, `ctx.steam` (añadir accesos directos, leer opciones de lanzamiento), `ctx.steam_language` y, en la interfaz, `ctx.copy` y `ctx.pickPath`.
 
 ## Compilar, probar e instalar
 Con el núcleo descargado junto a este repositorio (`../invasor`):

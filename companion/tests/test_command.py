@@ -1,6 +1,5 @@
 import importlib
 import sys
-import tempfile
 import types
 import unittest
 from pathlib import Path
@@ -18,7 +17,6 @@ def load(name):
 
 
 command = load("command")
-steam = load("steam")
 
 
 def build(**kw):
@@ -112,98 +110,6 @@ class BuildTest(unittest.TestCase):
     def test_compatibility_warnings(self):
         out = build(lsfg={"on": True, "profile": "p"}, wined3d=True, showInfo=True)
         self.assertEqual([w["code"] for w in out["warnings"]], ["lsfg_wined3d", "lsfg_mangohud"])
-
-
-class SteamTest(unittest.TestCase):
-    def test_language(self):
-        with tempfile.TemporaryDirectory() as d:
-            f = Path(d) / "registry.vdf"
-            for text, want in (('"language"\t\t"latam"', "es"), ('"language" "spanish"', "es"),
-                               ('"language" "english"', "en"), ('"language" "german"', "en"), ("nothing", "en")):
-                f.write_text(text)
-                self.assertEqual(steam.language(f), want, text)
-            self.assertEqual(steam.language(Path(d) / "missing"), "en")
-
-    def test_start_dir_and_listdir(self):
-        with tempfile.TemporaryDirectory() as d:
-            root = Path(d) / "Steam"
-            compat = root / "steamapps/compatdata"
-            for n in ("123", "0", "abc", ".hidden"):
-                (compat / n).mkdir(parents=True)
-            (compat / "file.txt").write_text("x")
-            self.assertEqual(steam.start_dir(root, ()), str(compat.resolve()))
-            out = steam.listdir(compat, lambda a: "Game " + a if a == "123" else None)
-            self.assertEqual(out["parent"], str(compat.parent.resolve()))
-            self.assertIsNone(out["error"])
-            self.assertEqual([x["label"] for x in out["dirs"]], ["0", "123 - Game 123", "abc"])
-            self.assertEqual([x["name"] for x in out["dirs"]], ["0", "123", "abc"])
-
-    def test_listdir_files(self):
-        with tempfile.TemporaryDirectory() as d:
-            root = Path(d)
-            (root / "b_dir").mkdir()
-            (root / ".hidden_dir").mkdir()
-            (root / "z.exe").write_text("x")
-            (root / "a.txt").write_text("x")
-            (root / ".secret").write_text("x")
-            out = steam.listdir(root, files=True)
-            self.assertEqual([x["name"] for x in out["dirs"]], ["b_dir"])
-            self.assertEqual([x["name"] for x in out["files"]], ["a.txt", "z.exe"])
-            self.assertEqual(steam.listdir(root)["files"], [])
-            self.assertEqual(len(steam.listdir(root, files=True, limit=2)["files"]), 1)
-
-    def test_steam_url(self):
-        self.assertEqual(steam.steam_url("/run/media/SteamOS/Games/_Launchers/Explorer++.exe"),
-                         "steam://addnonsteamgame/%2Frun%2Fmedia%2FSteamOS%2FGames%2F_Launchers%2FExplorer%2B%2B.exe")
-        self.assertEqual(steam.steam_url("/a b/ñ#&.exe"), "steam://addnonsteamgame/%2Fa%20b%2F%C3%B1%23%26.exe")
-
-    def _proc(self, root, pid, comm, env):
-        d = root / str(pid)
-        d.mkdir()
-        (d / "comm").write_text(comm + "\n")
-        (d / "environ").write_bytes(b"\0".join(f"{k}={v}".encode() for k, v in env.items()) + b"\0")
-
-    def test_session_env(self):
-        with tempfile.TemporaryDirectory() as d:
-            root = Path(d)
-            self.assertEqual(steam.session_env(root), {})
-            self._proc(root, 10, "bash", {"HOME": "/h"})
-            self._proc(root, 11, "plasmashell", {"WAYLAND_DISPLAY": "wayland-1", "XDG_CURRENT_DESKTOP": "KDE", "X": "y"})
-            self.assertEqual(steam.session_env(root), {"WAYLAND_DISPLAY": "wayland-1", "XDG_CURRENT_DESKTOP": "KDE"})
-            self._proc(root, 12, "steam", {"DISPLAY": ":0", "WAYLAND_DISPLAY": "wayland-0"})
-            self.assertEqual(steam.session_env(root), {"DISPLAY": ":0", "WAYLAND_DISPLAY": "wayland-0"})
-            self.assertEqual(steam.session_env(root / "missing"), {})
-
-    def test_steam_handler_registered(self):
-        with tempfile.TemporaryDirectory() as d:
-            f = Path(d) / "mimeapps.list"
-            self.assertFalse(steam.steam_handler_registered(f))
-            f.write_text("[Default Applications]\nx-scheme-handler/http=a.desktop\n")
-            self.assertFalse(steam.steam_handler_registered(f))
-            f.write_text("[Default Applications]\nx-scheme-handler/steam=steam.desktop;\n")
-            self.assertTrue(steam.steam_handler_registered(f))
-
-    def test_shortcut_added(self):
-        with tempfile.TemporaryDirectory() as d:
-            cfg = Path(d) / "userdata/1234/config"
-            cfg.mkdir(parents=True)
-            (cfg / "shortcuts.vdf").write_bytes(b"\x00shortcuts\x00Exe\x00\"/home/deck/Games/a b.exe\"\x00")
-            self.assertTrue(steam.shortcut_added("/home/deck/Games/a b.exe", d))
-            self.assertFalse(steam.shortcut_added("/home/deck/Games/other.exe", d))
-            self.assertFalse(steam.shortcut_added("/x", Path(d) / "nothing"))
-            # Only a whole value counts: not the start or the end of a longer path.
-            self.assertFalse(steam.shortcut_added("/home/deck/Games/a b", d))
-            self.assertFalse(steam.shortcut_added("/Games/a b.exe", d))
-            self.assertFalse(steam.shortcut_added("/home/deck/Games/a b.ex", d))
-            (cfg / "shortcuts.vdf").write_bytes(b"\x00shortcuts\x00Exe\x00/home/deck/Games/c.exe\x00")
-            self.assertTrue(steam.shortcut_added("/home/deck/Games/c.exe", d))
-            self.assertFalse(steam.shortcut_added("/home/deck/Games/c.exe.bak", d))
-
-    def test_listdir_errors_and_root(self):
-        out = steam.listdir("/nonexistent-companion-dir")
-        self.assertTrue(out["error"])
-        self.assertEqual(out["dirs"], [])
-        self.assertIsNone(steam.listdir("/")["parent"])
 
 
 if __name__ == "__main__":

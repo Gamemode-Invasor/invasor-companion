@@ -1,5 +1,4 @@
 import { ui, type ModuleCtx } from "invasor";
-import { copyText, openBrowser } from "./common";
 import type { Strings } from "./texts";
 
 interface Warning { code: string; name?: string }
@@ -67,7 +66,7 @@ export async function launcher(el: HTMLElement, ctx: ModuleCtx, t: Strings) {
 
   async function doCopy() {
     if (!command) return ctx.toast(t.nothing, "error");
-    if (await copyText(command)) ctx.toast(t.copied, "ok");
+    if (await ctx.copy(command)) ctx.toast(t.copied, "ok");
     else ctx.toast(t.copyFailed, "error");
   }
 
@@ -78,20 +77,18 @@ export async function launcher(el: HTMLElement, ctx: ModuleCtx, t: Strings) {
 
   const prefixLabel = ui.info("");
   const paintPrefix = () => (prefixLabel.textContent = state.prefix.path);
-  // openWindow returns null (and tells the user why) where there's no room, e.g. the Quick Access in a game.
+  // pickPath answers null (and tells the user why) where there's no room, e.g. the Quick Access in a game.
   const chooseFolder = ui.button({
     label: t.chooseFolder,
-    onClick: () =>
-      void openBrowser(ctx, t, {
-        title: t.chooseFolderMsg,
-        files: false,
-        start: state.prefix.path || undefined,
-        onPick: (path) => {
-          state.prefix.path = path;
-          paintPrefix();
-          change();
-        },
-      }),
+    onClick: async () => {
+      const start = state.prefix.path || (await ctx.call<string | null>("compatdata_dir")) || undefined;
+      const path = await ctx.pickPath({ title: t.chooseFolderMsg, start, chooseLabel: t.chooseThis });
+      if (path) {
+        state.prefix.path = path;
+        paintPrefix();
+        change();
+      }
+    },
   });
 
   function drawCustom() {
